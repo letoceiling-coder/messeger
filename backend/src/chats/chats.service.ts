@@ -84,7 +84,7 @@ export class ChatsService {
   }
 
   async getChats(userId: string) {
-    return this.prisma.chat.findMany({
+    const chats = await this.prisma.chat.findMany({
       where: {
         members: {
           some: {
@@ -116,6 +116,29 @@ export class ChatsService {
         lastMessageAt: 'desc',
       },
     });
+
+    const chatIds = chats.map((c) => c.id);
+    const unreadDeliveries = await this.prisma.messageDelivery.findMany({
+      where: {
+        userId,
+        status: { in: ['sent', 'delivered'] },
+        message: {
+          chatId: { in: chatIds },
+          isDeleted: false,
+        },
+      },
+      select: { message: { select: { chatId: true } } },
+    });
+    const unreadByChat: Record<string, number> = {};
+    unreadDeliveries.forEach((d) => {
+      const cid = d.message.chatId;
+      unreadByChat[cid] = (unreadByChat[cid] || 0) + 1;
+    });
+
+    return chats.map((chat) => ({
+      ...chat,
+      unreadCount: unreadByChat[chat.id] ?? 0,
+    }));
   }
 
   async getChat(chatId: string, userId: string) {

@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { chatsService } from '../services/chats.service';
 import { usersService } from '../services/users.service';
-import { Chat, User as UserType } from '../types';
+import { Chat, User as UserType, Message } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../contexts/WebSocketContext';
 
@@ -15,8 +15,9 @@ export const ChatsPage = () => {
   const [searching, setSearching] = useState(false);
   const [creatingChat, setCreatingChat] = useState<string | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
-  const { isUserOnline } = useWebSocket();
+  const { socket, isUserOnline } = useWebSocket();
 
   const loadChats = useCallback(async () => {
     try {
@@ -32,6 +33,32 @@ export const ChatsPage = () => {
   useEffect(() => {
     loadChats();
   }, [loadChats]);
+
+  // При возврате на список чатов — обновить список (актуальные последние сообщения и порядок)
+  useEffect(() => {
+    if (location.pathname === '/') loadChats();
+  }, [location.pathname, loadChats]);
+
+  // Обновление списка чатов при получении/отправке сообщения в реальном времени
+  useEffect(() => {
+    const handleMessageReceived = (message: Message) => {
+      setChats((prev) => {
+        const chatId = message.chatId;
+        const updatedAt = message.createdAt || new Date().toISOString();
+        const existing = prev.find((c) => c.id === chatId);
+        if (!existing) return prev;
+        const isFromOther = message.userId !== user?.id;
+        const updated: Chat = {
+          ...existing,
+          lastMessageAt: updatedAt,
+          unreadCount: isFromOther ? (existing.unreadCount ?? 0) + 1 : (existing.unreadCount ?? 0),
+        };
+        return [updated, ...prev.filter((c) => c.id !== chatId)];
+      });
+    };
+    socket.onMessageReceived(handleMessageReceived);
+    return () => socket.offMessageReceived(handleMessageReceived);
+  }, [socket, user?.id]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -95,16 +122,16 @@ export const ChatsPage = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#0b0b0b]">
+      <div className="flex items-center justify-center h-full min-h-0 bg-[#0b0b0b]">
         <div className="text-[#86868a]">Загрузка...</div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-[#0b0b0b] text-white">
-      {/* Шапка */}
-      <header className="flex-none flex items-center justify-between px-4 py-3 border-b border-white/10">
+    <div className="h-full min-h-0 flex flex-col bg-[#0b0b0b] text-white">
+      {/* Шапка — всегда видна */}
+      <header className="flex-none flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-full bg-[#2d2d2f] flex items-center justify-center text-sm font-semibold">
             {user?.username?.charAt(0).toUpperCase() || '?'}
@@ -215,6 +242,14 @@ export const ChatsPage = () => {
                         {chat.lastMessageAt ? formatDate(chat.lastMessageAt) : online ? 'В сети' : 'Нет сообщений'}
                       </p>
                     </div>
+                    {(chat.unreadCount ?? 0) > 0 && (
+                      <span
+                        className="shrink-0 min-w-[1.25rem] h-5 px-1.5 rounded-full bg-[#0a84ff] text-white text-xs font-medium flex items-center justify-center"
+                        title="Непрочитанные сообщения"
+                      >
+                        {chat.unreadCount! > 99 ? '99+' : chat.unreadCount}
+                      </span>
+                    )}
                     <span className="text-[#86868a] text-sm shrink-0">→</span>
                   </button>
                 </li>

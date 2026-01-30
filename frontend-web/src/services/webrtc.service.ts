@@ -1,12 +1,14 @@
-const STUN_SERVERS = [
+// Несколько STUN-серверов для стабильного соединения (Google, Twilio)
+const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
 ];
 
-// Для production добавить TURN сервер
-// const TURN_SERVERS = [
-//   { urls: 'turn:turn.example.com:3478', username: 'user', credential: 'pass' }
-// ];
+// Для NAT/файрвола: добавить TURN (coturn или облачный)
+// const TURN = { urls: 'turn:your-turn.com:3478', username: '...', credential: '...' };
 
 export class WebRTCService {
   private peerConnection: RTCPeerConnection | null = null;
@@ -14,6 +16,7 @@ export class WebRTCService {
   private remoteStream: MediaStream | null = null;
   private chatId: string | null = null;
   private socket: any;
+  private iceCandidateQueue: RTCIceCandidateInit[] = [];
   private onRemoteStreamCallback?: (stream: MediaStream) => void;
   private onCallEndCallback?: () => void;
   private onConnectionFailedCallback?: () => void;
@@ -23,16 +26,47 @@ export class WebRTCService {
     this.setupWebSocketListeners();
   }
 
+  private async addIceCandidateSafe(candidate: RTCIceCandidateInit) {
+    if (!this.peerConnection || !this.chatId) return;
+    const hasRemote = !!this.peerConnection.remoteDescription;
+    if (hasRemote) {
+      try {
+        await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (e) {
+        console.warn('addIceCandidate error:', e);
+      }
+    } else {
+      this.iceCandidateQueue.push(candidate);
+    }
+  }
+
+  private async drainIceQueue() {
+    if (!this.peerConnection) return;
+    while (this.iceCandidateQueue.length > 0) {
+      const c = this.iceCandidateQueue.shift()!;
+      try {
+        await this.peerConnection.addIceCandidate(new RTCIceCandidate(c));
+      } catch (e) {
+        console.warn('drainIceQueue error:', e);
+      }
+    }
+  }
+
   private setupWebSocketListeners() {
-    this.socket.on('call:answer', (data: { chatId: string; answer: RTCSessionDescriptionInit }) => {
+    this.socket.on('call:answer', async (data: { chatId: string; answer: RTCSessionDescriptionInit }) => {
       if (this.peerConnection && data.chatId === this.chatId) {
-        this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+        try {
+          await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+          await this.drainIceQueue();
+        } catch (e) {
+          console.error('setRemoteDescription (answer) error:', e);
+        }
       }
     });
 
     this.socket.on('call:ice-candidate', (data: { chatId: string; candidate: RTCIceCandidateInit }) => {
-      if (this.peerConnection && data.chatId === this.chatId) {
-        this.peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+      if (data.chatId === this.chatId) {
+        this.addIceCandidateSafe(data.candidate);
       }
     });
 
@@ -66,27 +100,37 @@ export class WebRTCService {
       });
 
       this.peerConnection = new RTCPeerConnection({
-        iceServers: STUN_SERVERS,
+        iceServers: ICE_SERVERS,
+        iceCandidatePoolSize: 10,
       });
 
       this.localStream.getTracks().forEach((track) => {
         this.peerConnection!.addTrack(track, this.localStream!);
       });
 
-      // Обработка удаленного потока
+      // Удалённый поток: поддерживаем и streams[0], и один track (для стабильной двусторонней связи)
       this.peerConnection.ontrack = (event) => {
-        this.remoteStream = event.streams[0];
+        const stream = event.streams?.[0] || (event.track ? new MediaStream([event.track]) : null);
+        if (!stream) return;
+        if (!this.remoteStream) {
+          this.remoteStream = stream;
+        } else {
+          stream.getTracks().forEach((t) => {
+            if (!this.remoteStream!.getTracks().some((r) => r.id === t.id)) {
+              this.remoteStream.addTrack(t);
+            }
+          });
+        }
         if (this.onRemoteStreamCallback) {
           this.onRemoteStreamCallback(this.remoteStream);
         }
       };
 
-      // Обработка ICE кандидатов
       this.peerConnection.onicecandidate = (event) => {
         if (event.candidate && this.chatId) {
           this.socket.emit('call:ice-candidate', {
             chatId: this.chatId,
-            candidate: event.candidate,
+            candidate: event.candidate.toJSON(),
           });
         }
       };
@@ -161,8 +205,8 @@ export class WebRTCService {
         }
       };
 
-      // Установка удаленного описания
       await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+      await this.drainIceQueue();
 
       // Создание answer
       const answer = await this.peerConnection.createAnswer();
@@ -192,6 +236,7 @@ export class WebRTCService {
       this.peerConnection = null;
     }
 
+    this.iceCandidateQueue = [];
     if (this.chatId && this.socket?.emit) {
       this.socket.emit('call:end', { chatId: this.chatId });
       this.chatId = null;

@@ -29,6 +29,8 @@ export interface Chat {
   createdAt: string;
   updatedAt: string;
   lastMessageAt?: string | null;
+  /** Количество непрочитанных сообщений в чате (для текущего пользователя) */
+  unreadCount?: number;
   members?: ChatMember[];
 }
 

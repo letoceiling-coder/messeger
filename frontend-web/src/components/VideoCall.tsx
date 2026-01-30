@@ -30,6 +30,7 @@ export const VideoCall = ({
   const [connectionError, setConnectionError] = useState(false);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null); // Голосовой звонок: воспроизведение удалённого аудио
   const webrtcServiceRef = useRef<WebRTCService | null>(null);
   const { socket } = useWebSocket();
 
@@ -94,8 +95,17 @@ export const VideoCall = ({
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
+      remoteVideoRef.current.play().catch(() => {});
     }
   }, [remoteStream]);
+
+  // Голосовой звонок: обязательно воспроизводить удалённый аудиопоток
+  useEffect(() => {
+    if (!videoMode && remoteAudioRef.current && remoteStream) {
+      remoteAudioRef.current.srcObject = remoteStream;
+      remoteAudioRef.current.play().catch(() => {});
+    }
+  }, [videoMode, remoteStream]);
 
   const handleEndCall = () => {
     if (webrtcServiceRef.current) {
@@ -231,7 +241,7 @@ export const VideoCall = ({
             )}
           </div>
         )}
-        <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+        <video ref={remoteVideoRef} autoPlay playsInline muted={false} className="w-full h-full object-cover" />
       </div>
       {/* Видеокружок — локальное видео в круге */}
       <div className="absolute bottom-24 right-4 w-28 h-28 rounded-full overflow-hidden border-2 border-white shadow-lg ring-2 ring-black/30">
