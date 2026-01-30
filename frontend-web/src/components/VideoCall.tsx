@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { WebRTCService } from '../services/webrtc.service';
+import { webrtcLogService } from '../services/webrtc-log.service';
 import { useWebSocket } from '../contexts/WebSocketContext';
 
 interface VideoCallProps {
@@ -44,6 +45,8 @@ export const VideoCall = ({
   const [connectionError, setConnectionError] = useState(false);
   const [noAnswer, setNoAnswer] = useState(false);
   const [callDurationSeconds, setCallDurationSeconds] = useState(0);
+  const [showLogs, setShowLogs] = useState(false);
+  const [logLines, setLogLines] = useState<string[]>([]);
   const callDurationRef = useRef(0);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -55,6 +58,7 @@ export const VideoCall = ({
   callDurationRef.current = callDurationSeconds;
 
   useEffect(() => {
+    webrtcLogService.clear();
     const webrtc = new WebRTCService(socket);
     webrtcServiceRef.current = webrtc;
     acceptedOrConnectedRef.current = false;
@@ -166,6 +170,18 @@ export const VideoCall = ({
     return () => clearInterval(interval);
   }, [localStream, connectionError, noAnswer]);
 
+  useEffect(() => {
+    if (!showLogs) return;
+    setLogLines(webrtcLogService.getLogs());
+    const unsub = webrtcLogService.subscribe(() => setLogLines(webrtcLogService.getLogs()));
+    return unsub;
+  }, [showLogs]);
+
+  const handleCopyLogs = () => {
+    const text = webrtcLogService.getLogs().join('\n');
+    navigator.clipboard?.writeText(text).then(() => alert('Логи скопированы')).catch(() => alert('Не удалось скопировать'));
+  };
+
   const handleEndCall = () => {
     onCallEndWithStats?.(callDurationRef.current, chatId, videoMode);
     if (webrtcServiceRef.current) {
@@ -256,12 +272,14 @@ export const VideoCall = ({
           </p>
         )}
         {(connectionError || noAnswer) && (
-          <button
-            onClick={onEnd}
-            className="mt-4 px-6 py-2 rounded-xl bg-[#2d2d2f] text-white hover:bg-[#3d3d3f]"
-          >
-            Закрыть
-          </button>
+          <div className="flex gap-3 mt-4">
+            <button type="button" onClick={() => setShowLogs(true)} className="px-4 py-2 rounded-xl bg-[#2d2d2f] text-white">
+              📋 Логи
+            </button>
+            <button onClick={onEnd} className="px-6 py-2 rounded-xl bg-[#2d2d2f] text-white hover:bg-[#3d3d3f]">
+              Закрыть
+            </button>
+          </div>
         )}
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 flex gap-4">
           <button
@@ -282,7 +300,24 @@ export const VideoCall = ({
           >
             <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.81-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 01-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .27-.11.52-.29.7l-2.31 2.31c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28a11.27 11.27 0 00-2.66-1.81.996.996 0 01-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z" /></svg>
           </button>
+          <button type="button" onClick={() => setShowLogs((v) => !v)} className="p-3 rounded-full bg-[#2d2d2f] text-white text-xs">
+            📋 Логи
+          </button>
         </div>
+        {showLogs && (
+          <div className="absolute inset-x-0 bottom-0 top-1/3 bg-black/95 text-green-400 p-4 flex flex-col z-[60]">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-white text-sm">Логи WebRTC</span>
+              <div className="flex gap-2">
+                <button type="button" onClick={handleCopyLogs} className="px-3 py-1.5 rounded bg-gray-600 text-white text-xs">Скопировать</button>
+                <button type="button" onClick={() => setShowLogs(false)} className="px-3 py-1.5 rounded bg-gray-600 text-white text-xs">Закрыть</button>
+              </div>
+            </div>
+            <pre className="flex-1 overflow-auto text-xs whitespace-pre-wrap break-all font-mono">
+              {logLines.length ? logLines.join('\n') : 'Пока нет записей.'}
+            </pre>
+          </div>
+        )}
       </div>
     );
   }
@@ -301,12 +336,21 @@ export const VideoCall = ({
               </p>
             )}
             {(connectionError || noAnswer) && (
-              <button
-                onClick={onEnd}
-                className="px-6 py-2 rounded-xl bg-red-600 text-white hover:bg-red-500"
-              >
-                Закрыть
-              </button>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setShowLogs(true); }}
+                  className="px-4 py-2 rounded-xl bg-gray-600 text-white"
+                >
+                  📋 Логи
+                </button>
+                <button
+                  onClick={onEnd}
+                  className="px-6 py-2 rounded-xl bg-red-600 text-white hover:bg-red-500"
+                >
+                  Закрыть
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -321,7 +365,7 @@ export const VideoCall = ({
       <div className="absolute bottom-24 right-4 w-28 h-28 rounded-full overflow-hidden border-2 border-white shadow-lg ring-2 ring-black/30">
         <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
       </div>
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-4">
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-4 items-center">
         <button onClick={handleToggleVideo} className={`p-4 rounded-full ${isVideoEnabled ? 'bg-gray-700' : 'bg-red-600'} text-white hover:bg-gray-600`}>
           {isVideoEnabled ? '📹' : '📵'}
         </button>
@@ -329,7 +373,33 @@ export const VideoCall = ({
           {isAudioEnabled ? '🎤' : '🔇'}
         </button>
         <button onClick={handleEndCall} className="p-4 rounded-full bg-red-600 text-white hover:bg-red-700">📞</button>
+        <button
+          type="button"
+          onClick={() => setShowLogs((v) => !v)}
+          className="p-3 rounded-full bg-gray-700/80 text-white text-sm"
+          title="Логи звонка (для диагностики на телефоне)"
+        >
+          📋 Логи
+        </button>
       </div>
+      {showLogs && (
+        <div className="absolute inset-0 top-auto bg-black/95 text-green-400 p-4 max-h-[60vh] flex flex-col z-[60]">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-white text-sm font-medium">Логи WebRTC</span>
+            <div className="flex gap-2">
+              <button type="button" onClick={handleCopyLogs} className="px-3 py-1.5 rounded bg-gray-600 text-white text-xs">
+                Скопировать
+              </button>
+              <button type="button" onClick={() => setShowLogs(false)} className="px-3 py-1.5 rounded bg-gray-600 text-white text-xs">
+                Закрыть
+              </button>
+            </div>
+          </div>
+          <pre className="flex-1 overflow-auto text-xs whitespace-pre-wrap break-all font-mono">
+            {logLines.length ? logLines.join('\n') : 'Пока нет записей. Совершите действие в звонке.'}
+          </pre>
+        </div>
+      )}
     </div>
   );
 };

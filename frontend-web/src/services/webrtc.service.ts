@@ -1,4 +1,5 @@
-// STUN + опциональный TURN из env (для NAT/мобильных сетей)
+import { webrtcLogService } from './webrtc-log.service';
+
 function getIceServers(): RTCIceServer[] {
   const servers: RTCIceServer[] = [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -43,7 +44,7 @@ export class WebRTCService {
       try {
         await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
       } catch (e) {
-        console.warn('addIceCandidate error:', e);
+        console.warn('[WebRTC] addIceCandidate error:', e);
       }
     } else {
       this.iceCandidateQueue.push(candidate);
@@ -57,7 +58,7 @@ export class WebRTCService {
       try {
         await this.peerConnection.addIceCandidate(new RTCIceCandidate(c));
       } catch (e) {
-        console.warn('drainIceQueue error:', e);
+        webrtcLogService.warn('drainIceQueue error', String(e));
       }
     }
   }
@@ -66,16 +67,18 @@ export class WebRTCService {
     this.socket.on('call:answer', async (data: { chatId: string; answer: RTCSessionDescriptionInit }) => {
       if (this.peerConnection && data.chatId === this.chatId) {
         try {
+          webrtcLogService.add('received call:answer');
           await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
           await this.drainIceQueue();
         } catch (e) {
-          console.error('setRemoteDescription (answer) error:', e);
+          console.error('[WebRTC] setRemoteDescription (answer) error:', e);
         }
       }
     });
 
     this.socket.on('call:ice-candidate', (data: { chatId: string; candidate: RTCIceCandidateInit }) => {
       if (data.chatId === this.chatId) {
+        if (typeof console?.log === 'function') console.log('[WebRTC] received ICE candidate');
         this.addIceCandidateSafe(data.candidate);
       }
     });
@@ -128,7 +131,37 @@ export class WebRTCService {
         this.peerConnection!.addTrack(track, this.localStream!);
       });
 
+      this.peerConnection.onicecandidate = (event) => {
+        if (event.candidate) webrtcLogService.add('ICE candidate (local)');
+        if (event.candidate && this.chatId) {
+          this.socket.emit('call:ice-candidate', {
+            chatId: this.chatId,
+            candidate: event.candidate.toJSON(),
+          });
+        }
+      };
+
+      this.peerConnection.onconnectionstatechange = () => {
+        const state = this.peerConnection?.connectionState;
+        const ice = this.peerConnection?.iceConnectionState;
+        webrtcLogService.add('connectionState: ' + state + ' ice: ' + ice);
+        if (state === 'failed') {
+          webrtcLogService.warn('Connection failed');
+          this.onConnectionFailedCallback?.();
+        }
+      };
+
+      this.peerConnection.oniceconnectionstatechange = () => {
+        const ice = this.peerConnection?.iceConnectionState;
+        webrtcLogService.add('iceConnectionState: ' + ice);
+        if (ice === 'failed') {
+          webrtcLogService.warn('ICE failed (на мобильных часто нужен TURN)');
+          this.onConnectionFailedCallback?.();
+        }
+      };
+
       this.peerConnection.ontrack = (event) => {
+        webrtcLogService.add('ontrack: ' + (event.track?.kind ?? '') + ' streams=' + (event.streams?.length ?? 0));
         const stream = event.streams?.[0] || (event.track ? new MediaStream([event.track]) : null);
         if (!stream) return;
         if (!this.remoteStream) {
@@ -140,22 +173,6 @@ export class WebRTCService {
         }
         if (this.onRemoteStreamCallback) {
           this.onRemoteStreamCallback(new MediaStream(this.remoteStream.getTracks()));
-        }
-      };
-
-      this.peerConnection.onicecandidate = (event) => {
-        if (event.candidate && this.chatId) {
-          this.socket.emit('call:ice-candidate', {
-            chatId: this.chatId,
-            candidate: event.candidate.toJSON(),
-          });
-        }
-      };
-
-      this.peerConnection.onconnectionstatechange = () => {
-        const state = this.peerConnection?.connectionState;
-        if (state === 'failed' || state === 'disconnected') {
-          this.onConnectionFailedCallback?.();
         }
       };
 
@@ -204,6 +221,7 @@ export class WebRTCService {
       });
 
       this.peerConnection.ontrack = (event) => {
+        webrtcLogService.add('ontrack (answerer): ' + (event.track?.kind ?? ''));
         const stream = event.streams?.[0] || (event.track ? new MediaStream([event.track]) : null);
         if (!stream) return;
         if (!this.remoteStream) {
@@ -227,6 +245,19 @@ export class WebRTCService {
         }
       };
 
+      this.peerConnection.onconnectionstatechange = () => {
+        const state = this.peerConnection?.connectionState;
+        const ice = this.peerConnection?.iceConnectionState;
+        if (typeof console?.log === 'function') console.log('[WebRTC] connectionState (answerer):', state, 'ice:', ice);
+        if (state === 'failed') this.onConnectionFailedCallback?.();
+      };
+
+      this.peerConnection.oniceconnectionstatechange = () => {
+        const ice = this.peerConnection?.iceConnectionState;
+        webrtcLogService.add('iceConnectionState (answerer): ' + ice);
+        if (ice === 'failed') this.onConnectionFailedCallback?.();
+      };
+
       await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
       await this.drainIceQueue();
 
@@ -235,6 +266,7 @@ export class WebRTCService {
       const transceivers = this.peerConnection.getTransceivers?.() ?? [];
       const audioTrack = this.localStream.getAudioTracks()[0];
       const videoTrack = this.localStream.getVideoTracks()[0];
+      if (typeof console?.log === 'function') console.log('[WebRTC] transceivers:', transceivers.length);
       for (const tr of transceivers) {
         if (!tr.sender || tr.sender.track != null) continue;
         const kind = (tr.receiver?.track?.kind ?? (tr as { kind?: string }).kind ?? '').toLowerCase();
@@ -243,13 +275,14 @@ export class WebRTCService {
           try {
             await tr.sender.replaceTrack(localTrack);
             tr.direction = 'sendrecv';
+            webrtcLogService.add('replaceTrack ok: ' + kind);
           } catch (e) {
-            console.warn('replaceTrack failed for', kind, e);
+            webrtcLogService.warn('replaceTrack failed ' + kind, String(e));
           }
         }
       }
-      // Fallback: если getTransceivers нет или треки не подставились — добавляем addTrack
       const hasSendTrack = transceivers.some((tr) => tr.sender?.track != null);
+      webrtcLogService.add('hasSendTrack: ' + hasSendTrack);
       if (!hasSendTrack) {
         this.localStream.getTracks().forEach((track) => {
           this.peerConnection!.addTrack(track, this.localStream!);
