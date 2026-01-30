@@ -263,7 +263,14 @@ export const ChatPage = () => {
     return baseUrl ? `${baseUrl}${audioUrl}` : audioUrl;
   };
 
-  const handleStartVideoCall = () => setIsInCall(true);
+  const handleStartVideoCall = () => {
+    setCallMode('video');
+    setIsInCall(true);
+  };
+  const handleStartVoiceCall = () => {
+    setCallMode('voice');
+    setIsInCall(true);
+  };
   const handleEndCall = () => {
     setIsInCall(false);
     setIncomingCall(null);
@@ -355,29 +362,53 @@ export const ChatPage = () => {
         </div>
 
         <div className="flex items-center gap-1">
-          {useEncryption && (
-            <span className="px-2 py-1 text-xs text-green-400 bg-green-500/20 rounded-lg" title="Шифрование">
-              🔒
-            </span>
-          )}
-          <button
-            onClick={handleStartVideoCall}
-            className="p-2.5 rounded-full bg-[#2d2d2f] hover:bg-[#3d3d3f] text-[#0a84ff]"
-            title="Видеозвонок"
-          >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" />
-            </svg>
-          </button>
-          <button
-            onClick={handleStartVoiceCall}
-            className="p-2.5 rounded-full bg-[#2d2d2f] hover:bg-[#3d3d3f] text-[#0a84ff]"
-            title="Голосовой звонок"
-          >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.81-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 01-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .27-.11.52-.29.7l-2.31 2.31c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28a11.27 11.27 0 00-2.66-1.81.996.996 0 01-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z" />
-            </svg>
-          </button>
+          {selectionMode ? (
+            <>
+              <button
+                onClick={handleDeleteSelected}
+                disabled={selectedIds.size === 0}
+                className="px-3 py-1.5 text-sm rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Удалить {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
+              </button>
+              <button onClick={exitSelectionMode} className="px-3 py-1.5 text-sm rounded-lg bg-[#2d2d2f] hover:bg-[#3d3d3f]">
+                Отмена
+              </button>
+            </>
+          ) : (
+            <>
+              {useEncryption && (
+                <span className="px-2 py-1 text-xs text-green-400 bg-green-500/20 rounded-lg" title="Шифрование">
+                  🔒
+                </span>
+              )}
+              <button
+                onClick={() => setSelectionMode(true)}
+                className="p-2.5 rounded-full bg-[#2d2d2f] hover:bg-[#3d3d3f] text-[#86868a] hover:text-white"
+                title="Выбрать сообщения"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+              </button>
+              <button
+                onClick={handleStartVideoCall}
+                className="p-2.5 rounded-full bg-[#2d2d2f] hover:bg-[#3d3d3f] text-[#0a84ff]"
+                title="Видеозвонок"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" />
+                </svg>
+              </button>
+              <button
+                onClick={handleStartVoiceCall}
+                className="p-2.5 rounded-full bg-[#2d2d2f] hover:bg-[#3d3d3f] text-[#0a84ff]"
+                title="Голосовой звонок"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.81-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 01-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .27-.11.52-.29.7l-2.31 2.31c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28a11.27 11.27 0 00-2.66-1.81.996.996 0 01-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z" />
+                </svg>
+              </button>
             </>
           )}
         </div>
