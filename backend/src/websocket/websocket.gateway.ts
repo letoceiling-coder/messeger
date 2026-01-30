@@ -48,6 +48,8 @@ export class MessagerWebSocketGateway
   private activeCalls = new Map<string, { callerId: string; receiverId: string }>(); // chatId -> call info
   /** Таймауты «не ответил» по chatId — очищаются при answer/reject/end */
   private callNoAnswerTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Кэш ранних ICE кандидатов (пришли до call:initiate/answer) */
+  private pendingIceCandidates = new Map<string, Array<{ candidate: any; fromUserId: string }>>();
 
   constructor(
     private jwtService: JwtService,
@@ -618,6 +620,9 @@ export class MessagerWebSocketGateway
         this.logger.warn(`Call answer: caller socket not found (callerId=${callInfo.callerId}) chatId=${dto.chatId}`);
       }
 
+      // Применяем кэшированные ICE кандидаты (если были)
+      this.drainPendingIceCandidates(dto.chatId);
+
       this.logger.log(`Call answered: ${dto.chatId}`);
     } catch (error) {
       this.logger.error(`Error answering call: ${error.message}`);
@@ -646,7 +651,21 @@ export class MessagerWebSocketGateway
     try {
       const callInfo = this.activeCalls.get(dto.chatId);
       if (!callInfo) {
-        this.logger.warn(`ICE candidate for unknown call: ${dto.chatId}`);
+        // Кэшируем ранний ICE кандидат (звонок ещё не активен)
+        if (!this.pendingIceCandidates.has(dto.chatId)) {
+          this.pendingIceCandidates.set(dto.chatId, []);
+        }
+        this.pendingIceCandidates.get(dto.chatId)!.push({
+          candidate: dto.candidate,
+          fromUserId: client.userId!,
+        });
+        this.logger.log(`ICE candidate cached for pending call: ${dto.chatId} (total: ${this.pendingIceCandidates.get(dto.chatId)!.length})`);
+        // Автоочистка через 10 секунд (если звонок не начнётся)
+        setTimeout(() => {
+          if (this.pendingIceCandidates.has(dto.chatId)) {
+            this.pendingIceCandidates.delete(dto.chatId);
+          }
+        }, 10000);
         return;
       }
 
@@ -677,6 +696,33 @@ export class MessagerWebSocketGateway
       clearTimeout(t);
       this.callNoAnswerTimers.delete(chatId);
     }
+  }
+
+  private drainPendingIceCandidates(chatId: string) {
+    const pending = this.pendingIceCandidates.get(chatId);
+    if (!pending || pending.length === 0) return;
+
+    const callInfo = this.activeCalls.get(chatId);
+    if (!callInfo) return;
+
+    this.logger.log(`Draining ${pending.length} pending ICE candidates for call ${chatId}`);
+
+    for (const item of pending) {
+      const receiverId =
+        callInfo.callerId === item.fromUserId
+          ? callInfo.receiverId
+          : callInfo.callerId;
+
+      const receiverSocketId = this.connectedUsers.get(receiverId);
+      if (receiverSocketId) {
+        this.server.to(receiverSocketId).emit('call:ice-candidate', {
+          chatId,
+          candidate: item.candidate,
+        });
+      }
+    }
+
+    this.pendingIceCandidates.delete(chatId);
   }
 
   @SubscribeMessage('call:end')
