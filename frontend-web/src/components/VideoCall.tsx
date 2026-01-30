@@ -319,6 +319,11 @@ export const VideoCall = ({
                     });
                     setLocalStream(stream);
                     preCapturedStreamRef.current = null;
+                    // Явно запускаем play() используя user gesture от клика "Принять"
+                    setTimeout(() => {
+                      if (remoteVideoRef.current) remoteVideoRef.current.play().catch(() => {});
+                      if (remoteAudioRef.current) remoteAudioRef.current.play().catch(() => {});
+                    }, 100);
                   } catch (error) {
                     console.error('Ошибка принятия звонка:', error);
                     acceptedOrConnectedRef.current = false;
@@ -473,7 +478,7 @@ export const VideoCall = ({
           ref={remoteVideoRef}
           autoPlay
           playsInline
-          muted={false}
+          muted={!remoteStream}
           className="w-full h-full object-cover"
         />
         {localStream && !connectionError && !noAnswer && (
