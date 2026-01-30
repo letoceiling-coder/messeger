@@ -112,8 +112,10 @@ export const VoiceRecorder = ({ chatId, onSent }: VoiceRecorderProps) => {
 
   if (audioUrl && audioBlob) {
     return (
-      <div className="flex items-center gap-2 p-2 rounded-xl bg-[#2d2d2f] border border-white/10">
-        <audio src={audioUrl} controls className="flex-1 max-w-[200px] h-9" />
+      <div className="flex items-center gap-2 p-2 rounded-xl bg-[#2d2d2f] border border-white/10 min-w-0 overflow-hidden">
+        <div className="chat-audio-wrap flex-1 min-w-0">
+          <audio src={audioUrl} controls preload="metadata" />
+        </div>
         <div className="flex gap-2 shrink-0">
           <button
             onClick={sendVoiceMessage}
@@ -123,7 +125,7 @@ export const VoiceRecorder = ({ chatId, onSent }: VoiceRecorderProps) => {
           </button>
           <button
             onClick={cancelRecording}
-            className="px-4 py-2 bg-[#3d3d3f] text-[#86868a] rounded-lg hover:bg-white/10 text-sm"
+            className="px-4 py-2 bg-[#3d3d3f] text-[#86868a] rounded-lg hover:bg-white/10 text-sm shrink-0"
           >
             Отмена
           </button>
@@ -133,7 +135,7 @@ export const VoiceRecorder = ({ chatId, onSent }: VoiceRecorderProps) => {
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 shrink-0">
       {isRecording ? (
         <>
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/20 border border-red-500/40">

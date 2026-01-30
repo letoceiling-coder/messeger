@@ -47,19 +47,30 @@ body {
   flex-direction: column;
 }
 
-/* Плашка воспроизведения аудио — строго внутри экрана, не уходит за край */
+/* Плашка воспроизведения аудио — строго внутри экрана, кнопка Play всегда доступна */
 .chat-audio-wrap {
   max-width: min(220px, 100%);
   width: 100%;
   min-width: 0;
   overflow: hidden;
   border-radius: 4px;
+  position: relative;
+  /* Кнопка Play слева — не обрезать */
+  direction: ltr;
 }
 .chat-audio-wrap audio {
   display: block;
   width: 100% !important;
   max-width: 100% !important;
   min-width: 0 !important;
-  height: 36px;
+  height: 40px;
   box-sizing: border-box;
+  position: relative;
+  left: 0;
+  object-fit: contain;
+}
+/* Нижняя панель с микрофоном — не обрезать на мобильных */
+.chat-page-footer {
+  flex-shrink: 0;
+  min-height: 0;
 }

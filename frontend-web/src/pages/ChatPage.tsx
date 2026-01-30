@@ -430,8 +430,8 @@ export const ChatPage = () => {
         </div>
       </header>
 
-      {/* Сообщения */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 space-y-3">
+      {/* Сообщения — скролл только здесь */}
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-4 pb-2 space-y-3">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-32 text-[#86868a] text-sm">
             <p>Пока нет сообщений.</p>
@@ -496,10 +496,10 @@ export const ChatPage = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Ввод: голосовое + текст + отправить */}
-      <div className="flex-none border-t border-white/10 px-4 py-3 bg-[#141414] space-y-2">
+      {/* Ввод: голосовое + текст + отправить — всегда виден, не уходит за экран */}
+      <div className="chat-page-footer flex-none shrink-0 border-t border-white/10 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-[#141414] space-y-2">
         <VoiceRecorder chatId={chatId || ''} onSent={() => loadMessages()} />
-        <form onSubmit={handleSendMessage} className="flex gap-2">
+        <form onSubmit={handleSendMessage} className="flex gap-2 min-h-0">
           <input
             type="text"
             value={newMessage}
