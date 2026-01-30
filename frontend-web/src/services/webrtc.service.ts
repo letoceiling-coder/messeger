@@ -115,11 +115,12 @@ export class WebRTCService {
         if (!this.remoteStream) {
           this.remoteStream = stream;
         } else {
-          stream.getTracks().forEach((t) => {
-            if (!this.remoteStream!.getTracks().some((r) => r.id === t.id)) {
-              this.remoteStream.addTrack(t);
-            }
-          });
+          const rs = this.remoteStream;
+          if (rs) {
+            stream.getTracks().forEach((t) => {
+              if (!rs.getTracks().some((r) => r.id === t.id)) rs.addTrack(t);
+            });
+          }
         }
         if (this.onRemoteStreamCallback) {
           this.onRemoteStreamCallback(this.remoteStream);
@@ -180,27 +181,37 @@ export class WebRTCService {
       });
 
       this.peerConnection = new RTCPeerConnection({
-        iceServers: STUN_SERVERS,
+        iceServers: ICE_SERVERS,
+        iceCandidatePoolSize: 10,
       });
 
       this.localStream.getTracks().forEach((track) => {
         this.peerConnection!.addTrack(track, this.localStream!);
       });
 
-      // Обработка удаленного потока
       this.peerConnection.ontrack = (event) => {
-        this.remoteStream = event.streams[0];
-        if (this.onRemoteStreamCallback) {
+        const stream = event.streams?.[0] || (event.track ? new MediaStream([event.track]) : null);
+        if (!stream) return;
+        if (!this.remoteStream) {
+          this.remoteStream = stream;
+        } else {
+          const rs = this.remoteStream;
+          if (rs) {
+            stream.getTracks().forEach((t) => {
+              if (!rs.getTracks().some((r) => r.id === t.id)) rs.addTrack(t);
+            });
+          }
+        }
+        if (this.onRemoteStreamCallback && this.remoteStream) {
           this.onRemoteStreamCallback(this.remoteStream);
         }
       };
 
-      // Обработка ICE кандидатов
       this.peerConnection.onicecandidate = (event) => {
         if (event.candidate && this.chatId) {
           this.socket.emit('call:ice-candidate', {
             chatId: this.chatId,
-            candidate: event.candidate,
+            candidate: event.candidate.toJSON(),
           });
         }
       };
