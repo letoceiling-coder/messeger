@@ -95,6 +95,7 @@ export const VideoCall = ({
     acceptedOrConnectedRef.current = false;
 
     webrtc.onRemoteStream((stream) => {
+      webrtcLogService.add(`onRemoteStream callback: tracks=${stream.getTracks().length}, userInteracted=${userInteractedRef.current}`);
       setRemoteStream(stream);
       setIsConnecting(false);
       setConnectionError(false);
