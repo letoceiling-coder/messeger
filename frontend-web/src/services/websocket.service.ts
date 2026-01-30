@@ -90,19 +90,25 @@ class WebSocketService {
     this.setStatus('disconnected');
   }
 
-  async sendMessage(chatId: string, content: string, useEncryption: boolean = false) {
+  async sendMessage(
+    chatId: string,
+    content: string,
+    useEncryption: boolean = false,
+    replyToId?: string | null,
+  ) {
     if (!this.socket?.connected) {
       throw new Error('Нет соединения с сервером. Проверьте интернет и обновите страницу.');
     }
 
-    // При отсутствии ключа у собеседника или ошибке шифрования — всегда отправляем без шифрования
+    const basePayload = { chatId, replyToId: replyToId || undefined };
+
     if (useEncryption) {
       try {
         const { encryptionService } = await import('./encryption.service');
         const encrypted = await encryptionService.encryptMessage(content, chatId);
         if (encrypted) {
           this.socket.emit('message:send', {
-            chatId,
+            ...basePayload,
             isEncrypted: true,
             encryptedContent: encrypted.encrypted,
             encryptedKey: null,
@@ -111,11 +117,15 @@ class WebSocketService {
           return;
         }
       } catch {
-        // Шифрование недоступно — отправляем без шифрования, сообщение всегда доходит
+        // Шифрование недоступно — отправляем без шифрования
       }
     }
 
-    this.socket.emit('message:send', { chatId, content, isEncrypted: false });
+    this.socket.emit('message:send', {
+      ...basePayload,
+      content,
+      isEncrypted: false,
+    });
   }
 
   markAsDelivered(messageId: string) {
