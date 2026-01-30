@@ -45,10 +45,20 @@ export const ChatsProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
+const defaultContextValue: ChatsContextType = {
+  chats: [],
+  setChats: () => {},
+  loadChats: async () => {},
+  markChatAsRead: () => {},
+};
+
 export const useChats = () => {
   const ctx = useContext(ChatsContext);
   if (ctx === undefined) {
-    throw new Error('useChats must be used within ChatsProvider');
+    if (typeof window !== 'undefined') {
+      console.warn('useChats used outside ChatsProvider — using fallback. Wrap app with ChatsProvider.');
+    }
+    return defaultContextValue;
   }
   return ctx;
 };
