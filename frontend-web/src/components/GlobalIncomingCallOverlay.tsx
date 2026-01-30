@@ -5,7 +5,7 @@ import { chatsService } from '../services/chats.service';
 import { soundService } from '../services/sound.service';
 
 export const GlobalIncomingCallOverlay = () => {
-  const { globalIncomingCall, rejectGlobalCall, clearGlobalCall } = useWebSocket();
+  const { globalIncomingCall, rejectGlobalCall } = useWebSocket();
   const [callerName, setCallerName] = useState<string>('');
   const navigate = useNavigate();
 
