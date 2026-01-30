@@ -1,0 +1,31 @@
+═══════════════════════════════════════════════════════════════
+  КОМАНДЫ ДЛЯ СИНХРОНИЗАЦИИ В GIT BASH
+═══════════════════════════════════════════════════════════════
+
+Выполните эти команды в Git Bash:
+
+───────────────────────────────────────────────────────────────
+
+# Backend - основные файлы
+scp -r backend/src dsc23ytp@5.101.156.207:~/messager/backend/
+scp -r backend/prisma dsc23ytp@5.101.156.207:~/messager/backend/
+scp backend/package.json backend/package-lock.json backend/tsconfig.json backend/nest-cli.json backend/ecosystem.config.js dsc23ytp@5.101.156.207:~/messager/backend/
+
+# Frontend - основные файлы
+scp -r frontend-web/src dsc23ytp@5.101.156.207:~/messager/frontend-web/
+scp frontend-web/package.json frontend-web/package-lock.json frontend-web/vite.config.ts frontend-web/tsconfig.json frontend-web/tailwind.config.js frontend-web/postcss.config.js frontend-web/index.html dsc23ytp@5.101.156.207:~/messager/frontend-web/
+
+# Mobile (если нужно)
+scp -r mobile/src dsc23ytp@5.101.156.207:~/messager/mobile/
+scp mobile/package.json mobile/app.json mobile/babel.config.js mobile/index.js mobile/tsconfig.json dsc23ytp@5.101.156.207:~/messager/mobile/
+
+# Nginx конфигурации
+scp -r nginx/* dsc23ytp@5.101.156.207:~/messager/nginx/
+
+───────────────────────────────────────────────────────────────
+
+Или используйте скрипт (если rsync установлен):
+chmod +x scripts/sync-to-server-scp.sh
+./scripts/sync-to-server-scp.sh
+
+═══════════════════════════════════════════════════════════════

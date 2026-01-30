@@ -1,0 +1,110 @@
+═══════════════════════════════════════════════════════════════
+  КОМАНДЫ ДЛЯ РАЗВЕРТЫВАНИЯ С MYSQL
+═══════════════════════════════════════════════════════════════
+
+Выполните на сервере (ssh dsc23ytp@5.101.156.207):
+
+───────────────────────────────────────────────────────────────
+ШАГ 1: BACKEND (MYSQL)
+───────────────────────────────────────────────────────────────
+
+cd ~/messager/backend
+
+# Создать .env.production
+cat > .env.production << 'EOF'
+DATABASE_URL=mysql://dsc23ytp_mess:r7nCbBSN%cr3@localhost:3306/dsc23ytp_mess
+JWT_SECRET=your-secret-key-change-this-in-production-min-32-chars
+REDIS_URL=redis://localhost:6379
+PORT=3000
+NODE_ENV=production
+CORS_ORIGIN=https://parser-auto.siteaccess.ru
+TELEGRAM_BOT_TOKEN=8519359237:AAG5sbsq8O0OJS0dGVJDp_2wNGd1gED5eDY
+EOF
+
+# ВАЖНО: Отредактируйте JWT_SECRET!
+nano .env.production
+
+# Установить зависимости
+npm install --production
+
+# Генерация Prisma Client
+npx prisma generate
+
+# Миграция БД
+npx prisma migrate deploy
+
+# Сборка
+npm run build
+
+# Создать директории
+mkdir -p uploads/audio logs
+
+# Установить PM2
+npm install -g pm2
+
+# Запустить
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup
+
+
+───────────────────────────────────────────────────────────────
+ШАГ 2: FRONTEND
+───────────────────────────────────────────────────────────────
+
+cd ~/messager/frontend-web
+
+# Создать .env.production
+cat > .env.production << 'EOF'
+VITE_API_URL=https://parser-auto.siteaccess.ru/api
+VITE_WS_URL=wss://parser-auto.siteaccess.ru
+EOF
+
+# Установить зависимости
+npm install
+
+# Сборка
+npm run build
+
+# Разместить build в public_html
+cp -r dist/* ~/parser-auto.site-access.ru/public_html/
+
+
+───────────────────────────────────────────────────────────────
+ШАГ 3: REDIS (если нужно)
+───────────────────────────────────────────────────────────────
+
+Включите Redis через панель Beget:
+1. Зайдите в панель управления
+2. Сайты → Дополнительно
+3. Включите "Хранить сессии сайтов в Redis"
+4. Стоимость: 2₽/день
+
+Или временно можно убрать Redis из конфигурации.
+
+
+───────────────────────────────────────────────────────────────
+ШАГ 4: ПРОВЕРКА
+───────────────────────────────────────────────────────────────
+
+# Проверить Backend
+curl http://localhost:3000/health
+
+# Проверить PM2
+pm2 status
+pm2 logs messager-backend
+
+# Проверить Frontend
+# Откройте: https://parser-auto.siteaccess.ru/
+
+
+───────────────────────────────────────────────────────────────
+ВАЖНО!
+───────────────────────────────────────────────────────────────
+
+1. DATABASE_URL уже настроен для MySQL
+2. JWT_SECRET нужно изменить на свой (минимум 32 символа)
+3. Redis можно включить через панель Beget (2₽/день)
+4. Токен Telegram бота уже добавлен
+
+═══════════════════════════════════════════════════════════════

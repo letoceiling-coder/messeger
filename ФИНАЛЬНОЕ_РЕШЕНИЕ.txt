@@ -1,0 +1,66 @@
+═══════════════════════════════════════════════════════════════
+  ФИНАЛЬНОЕ РЕШЕНИЕ
+═══════════════════════════════════════════════════════════════
+
+ПРОБЛЕМА:
+───────────────────────────────────────────────────────────────
+1. API не доступен через веб (Apache не проксирует)
+2. Backend нужно запустить с правильными переменными окружения
+
+
+РЕШЕНИЕ 1: ЗАПУСТИТЬ BACKEND ВРУЧНУЮ
+───────────────────────────────────────────────────────────────
+
+Выполните на сервере:
+
+ssh dsc23ytp@5.101.156.207
+
+cd ~/messager/backend
+
+export JWT_SECRET='iIPvW1ifTAzaH7FOu2Q19o4sFSHlcLMekdOIFzmkanE='
+export DATABASE_URL='mysql://dsc23ytp_mess:r7nCbBSN%cr3@localhost:3306/dsc23ytp_mess'
+export NODE_ENV=production
+export PORT=3000
+export CORS_ORIGIN='https://parser-auto.siteaccess.ru'
+
+nohup node dist/main.js > /dev/null 2>&1 &
+
+Проверьте:
+curl http://localhost:3000/health
+
+
+РЕШЕНИЕ 2: СОЗДАТЬ ПОЛЬЗОВАТЕЛЯ
+───────────────────────────────────────────────────────────────
+
+После запуска Backend:
+
+curl -X POST http://localhost:3000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@example.com",
+    "username": "admin",
+    "password": "admin123"
+  }'
+
+
+РЕШЕНИЕ 3: НАСТРОИТЬ APACHE
+───────────────────────────────────────────────────────────────
+
+Обратитесь в поддержку Beget:
+- Зайдите: https://cp.beget.com
+- Откройте: "Поддержка"
+- Попросите настроить проксирование /api → localhost:3000
+
+Файл .htaccess уже создан в public_html/
+
+
+КАК ВОЙТИ:
+───────────────────────────────────────────────────────────────
+
+1. Откройте: https://parser-auto.siteaccess.ru/login
+2. Email: admin@example.com
+3. Password: admin123
+4. Нажмите "Войти"
+
+
+═══════════════════════════════════════════════════════════════

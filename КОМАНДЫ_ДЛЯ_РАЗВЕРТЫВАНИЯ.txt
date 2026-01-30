@@ -1,0 +1,95 @@
+═══════════════════════════════════════════════════════════════
+  КОМАНДЫ ДЛЯ РАЗВЕРТЫВАНИЯ НА СЕРВЕРЕ
+═══════════════════════════════════════════════════════════════
+
+Выполните эти команды на сервере (ssh dsc23ytp@5.101.156.207):
+
+───────────────────────────────────────────────────────────────
+ШАГ 1: НАСТРОЙКА BACKEND
+───────────────────────────────────────────────────────────────
+
+cd ~/messager/backend
+
+# Создать .env.production
+cat > .env.production << 'EOF'
+DATABASE_URL=postgresql://user:password@localhost:5432/messager
+JWT_SECRET=your-secret-key-change-this-in-production
+REDIS_URL=redis://localhost:6379
+PORT=3000
+NODE_ENV=production
+CORS_ORIGIN=https://parser-auto.siteaccess.ru
+TELEGRAM_BOT_TOKEN=your-telegram-bot-token
+EOF
+
+# Установить зависимости
+npm install --production
+
+# Генерация Prisma Client
+npx prisma generate
+
+# Миграция БД
+npx prisma migrate deploy
+
+# Сборка
+npm run build
+
+# Создать директории
+mkdir -p uploads/audio logs
+
+# Установить PM2 (если не установлен)
+npm install -g pm2
+
+# Запустить
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup
+
+
+───────────────────────────────────────────────────────────────
+ШАГ 2: НАСТРОЙКА FRONTEND
+───────────────────────────────────────────────────────────────
+
+cd ~/messager/frontend-web
+
+# Создать .env.production
+cat > .env.production << 'EOF'
+VITE_API_URL=https://parser-auto.siteaccess.ru/api
+VITE_WS_URL=wss://parser-auto.siteaccess.ru
+EOF
+
+# Установить зависимости
+npm install
+
+# Сборка
+npm run build
+
+# Разместить build в public_html
+cp -r dist/* ~/parser-auto.site-access.ru/public_html/
+
+
+───────────────────────────────────────────────────────────────
+ШАГ 3: ПРОВЕРКА
+───────────────────────────────────────────────────────────────
+
+# Проверить Backend
+curl http://localhost:3000/health
+
+# Проверить PM2
+pm2 status
+pm2 logs messager-backend
+
+# Проверить Frontend
+# Откройте: https://parser-auto.siteaccess.ru/
+
+
+───────────────────────────────────────────────────────────────
+ВАЖНО: ПЕРЕД ЗАПУСКОМ
+───────────────────────────────────────────────────────────────
+
+1. Настройте DATABASE_URL в .env.production
+2. Настройте JWT_SECRET (должен быть уникальным)
+3. Убедитесь, что PostgreSQL запущен
+4. Убедитесь, что Redis запущен (если используется)
+5. Настройте Nginx (см. РАЗВЕРТЫВАНИЕ_НА_СЕРВЕРЕ.md)
+
+═══════════════════════════════════════════════════════════════

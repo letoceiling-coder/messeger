@@ -1,0 +1,52 @@
+═══════════════════════════════════════════════════════════════
+  КОМАНДЫ ДЛЯ НАСТРОЙКИ VPS
+═══════════════════════════════════════════════════════════════
+
+ШАГ 1: НАСТРОИТЬ MYSQL
+───────────────────────────────────────────────────────────────
+mysql -u root
+
+CREATE DATABASE messager CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'messager_user'@'localhost' IDENTIFIED BY 'r7nCbBSN%cr3';
+GRANT ALL PRIVILEGES ON messager.* TO 'messager_user'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+
+ШАГ 2: ПЕРЕНЕСТИ ПРОЕКТ (С ВАШЕГО КОМПЬЮТЕРА)
+───────────────────────────────────────────────────────────────
+scp -r backend/* root@89.169.39.244:/var/www/messager/backend/
+scp -r frontend-web/dist/* root@89.169.39.244:/var/www/messager/frontend-web/
+
+ШАГ 3: НАСТРОИТЬ BACKEND (НА VPS)
+───────────────────────────────────────────────────────────────
+ssh root@89.169.39.244
+
+cd /var/www/messager/backend
+npm install
+
+# Создать .env.production
+nano .env.production
+# (вставить содержимое из инструкции)
+
+npx prisma migrate deploy
+npx prisma generate
+npm run build
+
+ШАГ 4: НАСТРОИТЬ NGINX (НА VPS)
+───────────────────────────────────────────────────────────────
+nano /etc/nginx/sites-available/messager
+# (вставить конфигурацию из инструкции)
+
+ln -s /etc/nginx/sites-available/messager /etc/nginx/sites-enabled/
+rm /etc/nginx/sites-enabled/default
+nginx -t
+systemctl reload nginx
+
+ШАГ 5: ЗАПУСТИТЬ BACKEND (НА VPS)
+───────────────────────────────────────────────────────────────
+cd /var/www/messager/backend
+pm2 start ecosystem.config.js --update-env
+pm2 save
+pm2 startup
+
+═══════════════════════════════════════════════════════════════

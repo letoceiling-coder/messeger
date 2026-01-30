@@ -1,0 +1,71 @@
+# Список файлов и папок для исключения при копировании на сервер
+# Используйте этот список в WinSCP: Settings -> Preferences -> Transfer -> Exclude
+
+# Node modules (будут установлены через npm install)
+node_modules/
+**/node_modules/
+
+# Git
+.git/
+.gitignore
+
+# Build artifacts (будут собраны на сервере)
+dist/
+build/
+**/dist/
+**/build/
+
+# Environment files (кроме .env.production)
+.env
+.env.local
+.env.development
+.env.test
+**/.env
+**/.env.local
+**/.env.development
+**/.env.test
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+**/logs/
+**/*.log
+
+# Coverage
+coverage/
+.nyc_output/
+**/coverage/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+**/.cache/
+
+# Documentation (опционально, можно оставить)
+*.md
+!README.md
+
+# Scripts (можно оставить для удобства)
+scripts/
+
+# Mobile (не нужен на сервере)
+mobile/
+
+# Nginx configs (уже настроены на сервере)
+nginx/

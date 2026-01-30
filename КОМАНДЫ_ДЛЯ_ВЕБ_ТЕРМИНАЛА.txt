@@ -1,0 +1,55 @@
+═══════════════════════════════════════════════════════════════
+  КОМАНДЫ ДЛЯ ВЕБ-ТЕРМИНАЛА ПАНЕЛИ BEGET
+═══════════════════════════════════════════════════════════════
+
+ИНСТРУКЦИЯ:
+───────────────────────────────────────────────────────────────
+1. Откройте веб-терминал в панели Beget
+2. Скопируйте команды ниже
+3. Вставьте в терминал и выполните
+
+КОМАНДЫ ДЛЯ УСТАНОВКИ:
+───────────────────────────────────────────────────────────────
+
+# Обновление системы
+apt-get update && apt-get upgrade -y
+
+# Установка Node.js 20.x
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt-get install -y nodejs
+
+# Установка MySQL
+apt-get install -y mysql-server
+systemctl start mysql
+systemctl enable mysql
+
+# Установка Nginx
+apt-get install -y nginx
+systemctl start nginx
+systemctl enable nginx
+
+# Установка PM2
+npm install -g pm2
+
+# Установка дополнительных утилит
+apt-get install -y git curl wget build-essential
+
+# Создание директорий
+mkdir -p /var/www/messager/backend
+mkdir -p /var/www/messager/frontend-web
+mkdir -p /var/www/messager/backend/uploads
+mkdir -p /var/www/messager/backend/logs
+
+ПРОВЕРКА:
+───────────────────────────────────────────────────────────────
+node --version
+npm --version
+mysql --version
+nginx -v
+pm2 --version
+
+ПОСЛЕ УСТАНОВКИ:
+───────────────────────────────────────────────────────────────
+Сообщите мне - помогу настроить проект!
+
+═══════════════════════════════════════════════════════════════

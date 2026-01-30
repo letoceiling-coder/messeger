@@ -1,0 +1,35 @@
+═══════════════════════════════════════════════════════════════
+  БЫСТРОЕ РЕШЕНИЕ ПРОБЛЕМЫ С SSH
+═══════════════════════════════════════════════════════════════
+
+ПРОБЛЕМА:
+───────────────────────────────────────────────────────────────
+Запрашивается пароль при подключении по SSH.
+
+РЕШЕНИЕ 1: ВЕБ-ТЕРМИНАЛ (РЕКОМЕНДУЕТСЯ)
+───────────────────────────────────────────────────────────────
+1. Зайдите в панель управления VPS
+2. Найдите раздел "Терминал"
+3. Нажмите на него
+4. Работайте через веб-интерфейс
+
+РЕШЕНИЕ 2: ВОЙТИ ПО ПАРОЛЮ
+───────────────────────────────────────────────────────────────
+1. Если задавали пароль - введите его
+2. Если не задавали - проверьте email
+   (пароль был сгенерирован автоматически)
+
+РЕШЕНИЕ 3: ДОБАВИТЬ SSH-КЛЮЧ ВРУЧНУЮ
+───────────────────────────────────────────────────────────────
+После входа по паролю выполните:
+
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCfDT2nhPFvSoDEj6nOCr/kQKxnvCjUTzIh66JqTSoySMqVgJH44M0zEgtj/zM3f5rBBVtLq9vYNUbFnWA7sxrXasmzbYGSCZ1jG8Hm5BABN/Be6HSqganNlPHsVlQlVrpi7H2z8Tw7U5NYV/a4vF9FwToKGBTrhZFFmpGhp773pRDhwP2agzDXGoMrhHAjoTeGBcR1ao7gt5zUtiHxMBKwtV2RcLq0jOR8brWVQGAUweuhPOSzrAf1pvDYiIvvVZyF2Wv4QIKE4YpuGjhzTJlNaXMBeCtyPgNa/rxF2kZRmH5lLAlUmMt71I/n5dLbs60xJLSdWF7ec2I695e4sQi2ONkdJ1nhjNKZfK8tVJ4CoQIkThd8uJiqO+GLcjJscUt8v0JjzNxoMUPCOaOycsV0crEuq4mCXHbKrkGrPGFquaAM4/1b9goV7vOT6GdO2jUcIGUz6fGFIum3zMQ80IvdJUfQ1xc5UB4soIKkSTmhpTr3l2glhpt7+Nq3oGiKHrd/OKedy0SZf+YrcyW6zuMhm0duFA6mMVppjfae0CmWb+9i9U/ZVe1ytImXngtZT1PeOCmsUHihUTMOTNWE2cPKoWz+ssLeQWoGhCQYeHy6d8RmTLhbLhWfMzUvrGsaUorLgILjrp6+eIIovrUe3QcrKevhqH4q/Atec2AXCNpwvw== dsc-2@localhost" >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+
+ВАЖНО:
+───────────────────────────────────────────────────────────────
+⚠️ На счету мало средств - пополните баланс!
+
+═══════════════════════════════════════════════════════════════

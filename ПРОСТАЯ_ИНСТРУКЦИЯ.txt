@@ -1,0 +1,66 @@
+═══════════════════════════════════════════════════════════════
+  ПРОСТАЯ ИНСТРУКЦИЯ ПО ВХОДУ
+═══════════════════════════════════════════════════════════════
+
+КАК ВОЙТИ:
+───────────────────────────────────────────────────────────────
+
+1. Откройте: https://parser-auto.siteaccess.ru/login
+
+2. Введите:
+   Email:    admin@example.com
+   Password: admin123
+
+3. Нажмите "Войти"
+
+
+ВАЖНО:
+───────────────────────────────────────────────────────────────
+
+API пока не доступен через веб (Apache не проксирует).
+
+НО вы можете войти, если пользователь уже создан!
+
+
+ЕСЛИ НЕ РАБОТАЕТ:
+───────────────────────────────────────────────────────────────
+
+1. Создайте пользователя через SSH:
+
+   ssh dsc23ytp@5.101.156.207
+   
+   cd ~/messager/backend
+   
+   export JWT_SECRET='iIPvW1ifTAzaH7FOu2Q19o4sFSHlcLMekdOIFzmkanE='
+   export DATABASE_URL='mysql://dsc23ytp_mess:r7nCbBSN%cr3@localhost:3306/dsc23ytp_mess'
+   export NODE_ENV=production
+   export PORT=3000
+   export CORS_ORIGIN='https://parser-auto.siteaccess.ru'
+   
+   nohup node dist/main.js > backend.log 2>&1 &
+   
+   sleep 5
+   
+   curl -X POST http://localhost:3000/api/auth/register \
+     -H "Content-Type: application/json" \
+     -d '{
+       "email": "test@test.com",
+       "username": "testuser",
+       "password": "test123"
+     }'
+
+2. Затем войдите через интерфейс с этими данными
+
+
+НАСТРОЙКА APACHE:
+───────────────────────────────────────────────────────────────
+
+Обратитесь в поддержку Beget:
+- Зайдите: https://cp.beget.com
+- Откройте: "Поддержка"
+- Попросите настроить проксирование /api → localhost:3000
+
+Файл .htaccess уже создан в public_html/
+
+
+═══════════════════════════════════════════════════════════════

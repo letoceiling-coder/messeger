@@ -1,0 +1,115 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  avatarUrl    String?  @map("avatar_url")
+  isOnline     Boolean  @default(false) @map("is_online")
+  lastSeenAt   DateTime? @map("last_seen_at")
+  telegramId   String?   @unique @map("telegram_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  chatMembers    ChatMember[]
+  messages       Message[]
+  messageDeliveries MessageDelivery[]
+  userKey        UserKey?
+
+  @@map("users")
+}
+
+model Chat {
+  id            String   @id @default(uuid())
+  type          String   @default("direct")
+  name          String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  lastMessageAt DateTime? @map("last_message_at")
+
+  members  ChatMember[]
+  messages Message[]
+
+  @@map("chats")
+}
+
+model ChatMember {
+  id       String   @id @default(uuid())
+  chatId   String   @map("chat_id")
+  userId   String   @map("user_id")
+  role     String   @default("member")
+  joinedAt DateTime @default(now()) @map("joined_at")
+  leftAt   DateTime? @map("left_at")
+
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([chatId, userId])
+  @@map("chat_members")
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  chatId      String   @map("chat_id")
+  userId      String   @map("user_id")
+  content     String
+  messageType String   @default("text") @map("message_type")
+  audioUrl    String?  @map("audio_url")
+  replyToId   String?  @map("reply_to_id")
+  isEdited    Boolean  @default(false) @map("is_edited")
+  isDeleted   Boolean  @default(false) @map("is_deleted")
+  isEncrypted Boolean  @default(false) @map("is_encrypted")
+  encryptedContent String? @map("encrypted_content")
+  encryptedKey     String? @map("encrypted_key")
+  iv               String? @map("iv")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  chat            Chat              @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user            User              @relation(fields: [userId], references: [id])
+  replyTo         Message?          @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies         Message[]         @relation("MessageReplies")
+  messageDeliveries MessageDelivery[]
+
+  @@index([chatId, createdAt])
+  @@map("messages")
+}
+
+model UserKey {
+  id        String   @id @default(uuid())
+  userId   String   @unique @map("user_id")
+  publicKey String  @map("public_key")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_keys")
+}
+
+model MessageDelivery {
+  id          String   @id @default(uuid())
+  messageId   String   @map("message_id")
+  userId      String   @map("user_id")
+  status      String   @default("sent")
+  deliveredAt DateTime? @map("delivered_at")
+  readAt      DateTime? @map("read_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@map("message_deliveries")
+}

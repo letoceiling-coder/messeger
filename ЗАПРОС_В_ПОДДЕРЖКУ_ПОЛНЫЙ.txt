@@ -1,0 +1,71 @@
+═══════════════════════════════════════════════════════════════
+  ЗАПРОС В ПОДДЕРЖКУ BEGET (ПОЛНЫЙ ТЕКСТ)
+═══════════════════════════════════════════════════════════════
+
+Скопируйте и отправьте в поддержку Beget:
+
+───────────────────────────────────────────────────────────────
+
+Здравствуйте!
+
+Нужна помощь с настройкой Apache для проксирования Node.js приложения.
+
+Сайт: parser-auto.siteaccess.ru
+Backend работает на: http://localhost:30000
+
+ПРОБЛЕМА:
+- API запросы к /api/* возвращают 404 Not Found
+- WebSocket соединения не работают
+- Приложение не может подключиться к Backend
+
+ЧТО НУЖНО:
+
+1. Включить модули Apache:
+   - mod_proxy
+   - mod_proxy_http
+   - mod_rewrite
+
+2. Настроить проксирование в основной конфигурации Apache:
+
+   # Backend API
+   <Location /api>
+       ProxyPass http://localhost:30000/api
+       ProxyPassReverse http://localhost:30000/api
+       ProxyPreserveHost On
+   </Location>
+
+   # WebSocket для Socket.io
+   <Location /socket.io>
+       ProxyPass http://localhost:30000/socket.io
+       ProxyPassReverse http://localhost:30000/socket.io
+       ProxyPreserveHost On
+       
+       # WebSocket заголовки
+       RewriteEngine on
+       RewriteCond %{HTTP:Upgrade} websocket [NC]
+       RewriteCond %{HTTP:Connection} upgrade [NC]
+       RewriteRule ^/?(.*) "ws://localhost:30000/$1" [P,L]
+   </Location>
+
+3. Или использовать альтернативный вариант через RewriteRule:
+
+   RewriteEngine On
+   RewriteCond %{REQUEST_URI} ^/api/(.*)$
+   RewriteRule ^/api/(.*)$ http://localhost:30000/api/$1 [P,L]
+   
+   RewriteCond %{REQUEST_URI} ^/socket.io/(.*)$
+   RewriteRule ^/socket.io/(.*)$ http://localhost:30000/socket.io/$1 [P,L]
+
+ВАЖНО:
+- Backend уже запущен и работает на localhost:30000
+- Файл .htaccess не может использовать ProxyPass (ограничение Apache)
+- Нужна настройка в основной конфигурации виртуального хоста
+
+Помогите, пожалуйста, настроить проксирование.
+
+Спасибо!
+
+───────────────────────────────────────────────────────────────
+
+
+═══════════════════════════════════════════════════════════════

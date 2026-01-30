@@ -1,0 +1,43 @@
+═══════════════════════════════════════════════════════════════
+  БЫСТРАЯ СИНХРОНИЗАЦИЯ ФАЙЛОВ
+═══════════════════════════════════════════════════════════════
+
+ВАРИАНТ 1: GIT BASH (РЕКОМЕНДУЕТСЯ)
+────────────────────────────────────
+1. Откройте Git Bash в папке проекта
+2. Выполните:
+
+chmod +x scripts/sync-to-server.sh
+./scripts/sync-to-server.sh
+
+
+ВАРИАНТ 2: VS CODE REMOTE SSH (САМЫЙ УДОБНЫЙ)
+──────────────────────────────────────────────
+1. Установите расширение "Remote - SSH"
+2. F1 → "Remote-SSH: Connect to Host"
+3. Введите: dsc23ytp@5.101.156.207
+4. Откройте папку: /home/dsc23ytp/messager
+5. Работайте напрямую с файлами на сервере!
+
+Теперь можно редактировать файлы напрямую на сервере,
+без синхронизации!
+
+
+ВАРИАНТ 3: РУЧНАЯ СИНХРОНИЗАЦИЯ
+────────────────────────────────
+В Git Bash:
+
+# Backend
+rsync -avz --progress --exclude 'node_modules' --exclude '.git' --exclude 'dist' backend/ dsc23ytp@5.101.156.207:~/messager/backend/
+
+# Frontend
+rsync -avz --progress --exclude 'node_modules' --exclude '.git' --exclude 'dist' frontend-web/ dsc23ytp@5.101.156.207:~/messager/frontend-web/
+
+
+ПРОВЕРКА
+────────
+ssh dsc23ytp@5.101.156.207 "ls -la ~/messager/backend/src/"
+
+Должны быть файлы проекта.
+
+═══════════════════════════════════════════════════════════════

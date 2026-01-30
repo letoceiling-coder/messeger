@@ -1,0 +1,67 @@
+═══════════════════════════════════════════════════════════════
+  КОМАНДЫ ДЛЯ ВЫПОЛНЕНИЯ НА СЕРВЕРЕ
+═══════════════════════════════════════════════════════════════
+
+ШАГ 1: ПОДКЛЮЧИТЕСЬ К СЕРВЕРУ
+───────────────────────────────
+На вашем компьютере выполните:
+
+ssh dsc23ytp@parser-auto.site-access.ru
+
+(Введите пароль, когда попросит)
+
+
+ШАГ 2: СКОПИРУЙТЕ И ВЫПОЛНИТЕ ЭТИ КОМАНДЫ НА СЕРВЕРЕ
+─────────────────────────────────────────────────────
+
+mkdir -p ~/.ssh
+
+echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCfDT2nhPFvSoDEj6nOCr/kQKxnvCjUTzIh66JqTSoySMqVgJH44M0zEgtj/zM3f5rBBVtLq9vYNUbFnWA7sxrXasmzbYGSCZ1jG8Hm5BABN/Be6HSqganNlPHsVlQlVrpi7H2z8Tw7U5NYV/a4vF9FwToKGBTrhZFFmpGhp773pRDhwP2agzDXGoMrhHAjoTeGBcR1ao7gt5zUtiHxMBKwtV2RcLq0jOR8brWVQGAUweuhPOSzrAf1pvDYiIvvVZyF2Wv4QIKE4YpuGjhzTJlNaXMBeCtyPgNa/rxF2kZRmH5lLAlUmMt71I/n5dLbs60xJLSdWF7ec2I695e4sQi2ONkdJ1nhjNKZfK8tVJ4CoQIkThd8uJiqO+GLcjJscUt8v0JjzNxoMUPCOaOycsV0crEuq4mCXHbKrkGrPGFquaAM4/1b9goV7vOT6GdO2jUcIGUz6fGFIum3zMQ80IvdJUfQ1xc5UB4soIKkSTmhpTr3l2glhpt7+Nq3oGiKHrd/OKedy0SZf+YrcyW6zuMhm0duFA6mMVppjfae0CmWb+9i9U/ZVe1ytImXngtZT1PeOCmsUHihUTMOTNWE2cPKoWz+ssLeQWoGhCQYeHy6d8RmTLhbLhWfMzUvrGsaUorLgILjrp6+eIIovrUe3QcrKevhqH4q/Atec2AXCNpwvw== dsc-2@localhost" >> ~/.ssh/authorized_keys
+
+chmod 700 ~/.ssh
+
+chmod 600 ~/.ssh/authorized_keys
+
+
+ШАГ 3: СОЗДАТЬ СТРУКТУРУ ПРОЕКТА
+─────────────────────────────────
+
+mkdir -p ~/messager/backend
+
+mkdir -p ~/messager/frontend-web
+
+mkdir -p ~/messager/mobile
+
+mkdir -p ~/messager/nginx
+
+
+ШАГ 4: ВЫЙТИ И ПРОВЕРИТЬ
+─────────────────────────
+
+exit
+
+Теперь попробуйте подключиться снова (без пароля):
+
+ssh dsc23ytp@parser-auto.site-access.ru
+
+Если подключилось без пароля - всё работает! ✅
+
+
+═══════════════════════════════════════════════════════════════
+  ЕСЛИ КОМАНДА ECHO НЕ РАБОТАЕТ
+═══════════════════════════════════════════════════════════════
+
+Используйте редактор nano:
+
+1. mkdir -p ~/.ssh
+
+2. nano ~/.ssh/authorized_keys
+
+3. Вставьте ваш ключ (весь текст из файла ВАШ_SSH_КЛЮЧ.txt):
+   ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCfDT2nhPFvSoDEj6nOCr/kQKxnvCjUTzIh66JqTSoySMqVgJH44M0zEgtj/zM3f5rBBVtLq9vYNUbFnWA7sxrXasmzbYGSCZ1jG8Hm5BABN/Be6HSqganNlPHsVlQlVrpi7H2z8Tw7U5NYV/a4vF9FwToKGBTrhZFFmpGhp773pRDhwP2agzDXGoMrhHAjoTeGBcR1ao7gt5zUtiHxMBKwtV2RcLq0jOR8brWVQGAUweuhPOSzrAf1pvDYiIvvVZyF2Wv4QIKE4YpuGjhzTJlNaXMBeCtyPgNa/rxF2kZRmH5lLAlUmMt71I/n5dLbs60xJLSdWF7ec2I695e4sQi2ONkdJ1nhjNKZfK8tVJ4CoQIkThd8uJiqO+GLcjJscUt8v0JjzNxoMUPCOaOycsV0crEuq4mCXHbKrkGrPGFquaAM4/1b9goV7vOT6GdO2jUcIGUz6fGFIum3zMQ80IvdJUfQ1xc5UB4soIKkSTmhpTr3l2glhpt7+Nq3oGiKHrd/OKedy0SZf+YrcyW6zuMhm0duFA6mMVppjfae0CmWb+9i9U/ZVe1ytImXngtZT1PeOCmsUHihUTMOTNWE2cPKoWz+ssLeQWoGhCQYeHy6d8RmTLhbLhWfMzUvrGsaUorLgILjrp6+eIIovrUe3QcrKevhqH4q/Atec2AXCNpwvw== dsc-2@localhost
+
+4. Сохраните: Ctrl+O, Enter, Ctrl+X
+
+5. chmod 700 ~/.ssh
+
+6. chmod 600 ~/.ssh/authorized_keys

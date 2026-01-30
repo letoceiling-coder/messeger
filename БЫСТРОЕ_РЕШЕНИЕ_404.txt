@@ -1,0 +1,62 @@
+═══════════════════════════════════════════════════════════════
+  БЫСТРОЕ РЕШЕНИЕ ОШИБКИ 404 ДЛЯ API
+═══════════════════════════════════════════════════════════════
+
+ПРОБЛЕМА:
+───────────────────────────────────────────────────────────────
+404 Not Found при попытке войти.
+
+ПРИЧИНА:
+───────────────────────────────────────────────────────────────
+1. Backend не запущен
+2. Apache не проксирует /api к Backend
+
+
+РЕШЕНИЕ 1: ЗАПУСТИТЬ BACKEND
+───────────────────────────────────────────────────────────────
+
+Выполните на сервере:
+
+ssh dsc23ytp@5.101.156.207
+
+cd ~/messager/backend
+
+export JWT_SECRET='iIPvW1ifTAzaH7FOu2Q19o4sFSHlcLMekdOIFzmkanE='
+export DATABASE_URL='mysql://dsc23ytp_mess:r7nCbBSN%cr3@localhost:3306/dsc23ytp_mess'
+export NODE_ENV=production
+export PORT=30000
+export CORS_ORIGIN='https://parser-auto.siteaccess.ru'
+
+nohup node dist/main.js > backend.log 2>&1 &
+
+Проверьте:
+curl http://localhost:30000/health
+
+Должен вернуть: {"status":"ok"}
+
+
+РЕШЕНИЕ 2: СОЗДАТЬ ПОЛЬЗОВАТЕЛЯ
+───────────────────────────────────────────────────────────────
+
+curl -X POST http://localhost:30000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@example.com",
+    "username": "admin",
+    "password": "admin123"
+  }'
+
+
+РЕШЕНИЕ 3: НАСТРОИТЬ ПРОКСИРОВАНИЕ
+───────────────────────────────────────────────────────────────
+
+Обратитесь в поддержку Beget:
+- Зайдите: https://cp.beget.com
+- Откройте: "Поддержка"
+- См. файл: ЗАПРОС_В_ПОДДЕРЖКУ_BEGET.txt
+
+ProxyPass не работает в .htaccess,
+нужна основная конфигурация Apache.
+
+
+═══════════════════════════════════════════════════════════════

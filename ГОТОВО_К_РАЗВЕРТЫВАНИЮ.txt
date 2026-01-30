@@ -1,0 +1,113 @@
+═══════════════════════════════════════════════════════════════
+  ГОТОВО К РАЗВЕРТЫВАНИЮ!
+═══════════════════════════════════════════════════════════════
+
+✅ ИЗМЕНЕНИЯ ВЫПОЛНЕНЫ:
+───────────────────────────────────────────────────────────────
+✅ Prisma schema обновлен для MySQL
+✅ DATABASE_URL настроен: mysql://dsc23ytp_mess:r7nCbBSN%cr3@localhost:3306/dsc23ytp_mess
+✅ Telegram Bot Token добавлен: 8519359237:AAG5sbsq8O0OJS0dGVJDp_2wNGd1gED5eDY
+✅ Redis - опционально (можно включить через панель Beget, 2₽/день)
+
+
+═══════════════════════════════════════════════════════════════
+  КОМАНДЫ ДЛЯ РАЗВЕРТЫВАНИЯ
+═══════════════════════════════════════════════════════════════
+
+Подключитесь к серверу:
+───────────────────────────────────────────────────────────────
+ssh dsc23ytp@5.101.156.207
+
+
+ШАГ 1: BACKEND
+───────────────────────────────────────────────────────────────
+cd ~/messager/backend
+
+# Создать .env.production
+cat > .env.production << 'EOF'
+DATABASE_URL=mysql://dsc23ytp_mess:r7nCbBSN%cr3@localhost:3306/dsc23ytp_mess
+JWT_SECRET=your-secret-key-change-this-in-production-min-32-chars
+REDIS_URL=redis://localhost:6379
+PORT=3000
+NODE_ENV=production
+CORS_ORIGIN=https://parser-auto.siteaccess.ru
+TELEGRAM_BOT_TOKEN=8519359237:AAG5sbsq8O0OJS0dGVJDp_2wNGd1gED5eDY
+EOF
+
+# ВАЖНО: Сгенерируйте JWT_SECRET!
+openssl rand -base64 32
+# Скопируйте результат и замените в .env.production
+nano .env.production
+
+# Установить зависимости
+npm install --production
+
+# Генерация Prisma Client
+npx prisma generate
+
+# Миграция БД
+npx prisma migrate deploy
+
+# Сборка
+npm run build
+
+# Создать директории
+mkdir -p uploads/audio logs
+
+# Установить PM2
+npm install -g pm2
+
+# Запустить
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup
+
+
+ШАГ 2: FRONTEND
+───────────────────────────────────────────────────────────────
+cd ~/messager/frontend-web
+
+# Создать .env.production
+cat > .env.production << 'EOF'
+VITE_API_URL=https://parser-auto.siteaccess.ru/api
+VITE_WS_URL=wss://parser-auto.siteaccess.ru
+EOF
+
+# Установить зависимости
+npm install
+
+# Сборка
+npm run build
+
+# Разместить build в public_html
+cp -r dist/* ~/parser-auto.site-access.ru/public_html/
+
+
+ШАГ 3: ПРОВЕРКА
+───────────────────────────────────────────────────────────────
+# Проверить Backend
+curl http://localhost:3000/health
+
+# Проверить PM2
+pm2 status
+pm2 logs messager-backend
+
+# Откройте в браузере:
+# https://parser-auto.siteaccess.ru/
+
+
+═══════════════════════════════════════════════════════════════
+  ВАЖНО!
+═══════════════════════════════════════════════════════════════
+
+1. JWT_SECRET должен быть минимум 32 символа
+   Сгенерируйте: openssl rand -base64 32
+
+2. Redis можно включить через панель Beget (2₽/день)
+   Или временно убрать из конфигурации
+
+3. База данных MySQL уже настроена:
+   - Имя: dsc23ytp_mess
+   - Пароль: r7nCbBSN%cr3
+
+═══════════════════════════════════════════════════════════════

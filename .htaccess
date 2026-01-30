@@ -1,0 +1,31 @@
+# Apache конфигурация для SPA (React)
+# ProxyPass не работает в .htaccess, только в основной конфигурации Apache
+
+# SPA роутинг для React
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+    
+    # Если файл или директория не существует, перенаправить на index.html
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} !^/api
+    RewriteCond %{REQUEST_URI} !^/socket.io
+    RewriteCond %{REQUEST_URI} !^/uploads
+    RewriteRule . /index.html [L]
+</IfModule>
+
+# Отключить листинг директорий
+Options -Indexes
+
+# Кэширование статических файлов
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 1 year"
+    ExpiresByType application/javascript "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/jpg "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+</IfModule>
