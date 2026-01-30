@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
-import { websocketService } from '../services/websocket.service';
+import { websocketService, ConnectionStatus } from '../services/websocket.service';
 import { useAuth } from './AuthContext';
 
 /** Реальное время: userId -> true (онлайн) / false (оффлайн). Если ключа нет — использовать данные с API. */
@@ -11,6 +11,8 @@ interface WebSocketContextType {
   onlineStatus: OnlineStatusMap;
   /** Онлайн ли пользователь: приоритет у real-time, иначе fallback с API */
   isUserOnline: (userId: string | undefined, fallbackFromApi?: boolean) => boolean;
+  /** Статус соединения: connected / disconnected / reconnecting */
+  connectionStatus: ConnectionStatus;
 }
 
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
@@ -18,6 +20,7 @@ const WebSocketContext = createContext<WebSocketContextType | undefined>(undefin
 export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
   const { isAuthenticated } = useAuth();
   const [onlineStatus, setOnlineStatus] = useState<OnlineStatusMap>({});
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -52,6 +55,12 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
       websocketService.offUserOnline(handleOnline);
       websocketService.offUserOffline(handleOffline);
     };
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const unsub = websocketService.onStatusChange(setConnectionStatus);
+    return unsub;
   }, [isAuthenticated]);
 
   const isUserOnline = useCallback(

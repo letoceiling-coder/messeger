@@ -29,7 +29,7 @@ export const ChatPage = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastTempMessageIdRef = useRef<string | null>(null);
-  const { socket, isUserOnline } = useWebSocket();
+  const { socket, isUserOnline, connectionStatus } = useWebSocket();
   const { user } = useAuth();
 
   const contact: ChatMemberUser | null = chat?.members?.find((m) => m.userId !== user?.id)?.user ?? null;
