@@ -89,7 +89,8 @@ class EncryptionService {
   }
 
   /**
-   * Получение публичного ключа пользователя
+   * Получение публичного ключа пользователя.
+   * Возвращает null, если ключ не найден (другой пользователь ещё не настроил E2EE) — без лога в консоль.
    */
   async getPublicKey(userId: string): Promise<string | null> {
     try {
@@ -97,7 +98,9 @@ class EncryptionService {
         `/encryption/public-key/${userId}`,
       );
       return response.data.publicKey;
-    } catch (error) {
+    } catch (error: any) {
+      // 404 / ключ не найден — нормальная ситуация, не логируем
+      if (error?.response?.status === 404) return null;
       console.error('Ошибка получения публичного ключа:', error);
       return null;
     }
@@ -241,16 +244,13 @@ class EncryptionService {
 
   /**
    * Инициализация E2EE для чата
-   * Обмен AES ключом с другим пользователем
+   * Обмен AES ключом с другим пользователем.
+   * Возвращает false, если у другого пользователя нет публичного ключа (работаем без шифрования, без лога).
    */
   async initializeChatEncryption(chatId: string, otherUserId: string): Promise<boolean> {
     try {
-      // Получить публичный ключ другого пользователя
       const otherPublicKey = await this.getPublicKey(otherUserId);
-      if (!otherPublicKey) {
-        console.warn('Публичный ключ другого пользователя не найден');
-        return false;
-      }
+      if (!otherPublicKey) return false;
 
       // Сгенерировать AES ключ для чата
       const aesKey = await this.generateAESKey();

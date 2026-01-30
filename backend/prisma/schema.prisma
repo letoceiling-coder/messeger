@@ -63,7 +63,7 @@ model Message {
   id          String   @id @default(uuid())
   chatId      String   @map("chat_id")
   userId      String   @map("user_id")
-  content     String
+  content     String   @db.Text
   messageType String   @default("text") @map("message_type")
   audioUrl    String?  @map("audio_url")
   mediaUrl    String?  @map("media_url")
@@ -71,7 +71,7 @@ model Message {
   isEdited    Boolean  @default(false) @map("is_edited")
   isDeleted   Boolean  @default(false) @map("is_deleted")
   isEncrypted Boolean  @default(false) @map("is_encrypted")
-  encryptedContent String? @map("encrypted_content")
+  encryptedContent String? @db.Text @map("encrypted_content")
   encryptedKey     String? @map("encrypted_key")
   iv               String? @map("iv")
   createdAt   DateTime @default(now()) @map("created_at")

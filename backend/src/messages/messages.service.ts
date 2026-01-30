@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 interface CreateMessageDto {
@@ -219,40 +219,83 @@ export class MessagesService {
 
   async getMessages(
     chatId: string,
+    userId: string | undefined,
     limit: number = 50,
     offset: number = 0,
   ) {
-    return this.prisma.message.findMany({
-      where: {
-        chatId,
-        isDeleted: false,
+    if (userId) {
+      const member = await this.prisma.chatMember.findFirst({
+        where: {
+          chatId,
+          userId,
+          leftAt: null,
+        },
+      });
+      if (!member) {
+        throw new ForbiddenException('Нет доступа к этому чату');
+      }
+    }
+
+    const baseInclude = {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          username: true,
+        },
       },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            username: true,
+      replyTo: {
+        select: {
+          id: true,
+          content: true,
+          messageType: true,
+          userId: true,
+        },
+      },
+      messageDeliveries: {
+        select: { status: true, deliveredAt: true, readAt: true },
+      },
+    };
+
+    try {
+      return await this.prisma.message.findMany({
+        where: {
+          chatId,
+          isDeleted: false,
+        },
+        include: baseInclude,
+        orderBy: {
+          createdAt: 'desc',
+        },
+        take: limit,
+        skip: offset,
+      });
+    } catch {
+      try {
+        return await this.prisma.message.findMany({
+          where: {
+            chatId,
+            isDeleted: false,
           },
-        },
-        replyTo: {
-          select: {
-            id: true,
-            content: true,
-            messageType: true,
-            userId: true,
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                username: true,
+              },
+            },
           },
-        },
-        messageDeliveries: {
-          select: { status: true, deliveredAt: true, readAt: true },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      take: limit,
-      skip: offset,
-    });
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: limit,
+          skip: offset,
+        });
+      } catch (fallbackErr) {
+        throw fallbackErr;
+      }
+    }
   }
 
   /** Мягкое удаление сообщения (только автор) */

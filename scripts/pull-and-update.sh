@@ -58,8 +58,19 @@ fi
 cd "$ROOT"
 
 echo -e "${YELLOW}[4/7] Prisma migrate (backend)...${NC}"
-(cd "$ROOT/backend" && npx prisma migrate deploy 2>/dev/null) || (cd "$ROOT/backend" && npx prisma db push 2>/dev/null) || true
-(cd "$ROOT/backend" && npx prisma generate) || true
+# Load .env.production or .env so DATABASE_URL is set for prisma migrate
+(
+  cd "$ROOT/backend"
+  if [ -f .env.production ]; then set -a; . ./.env.production; set +a
+  elif [ -f .env ]; then set -a; . ./.env; set +a; fi
+  if npx prisma migrate deploy; then
+    echo -e "${GREEN}Prisma migrate deploy OK${NC}"
+  else
+    echo -e "${YELLOW}migrate deploy failed, trying db push...${NC}"
+    npx prisma db push || true
+  fi
+  npx prisma generate
+)
 
 echo -e "${YELLOW}[5/7] Backend build...${NC}"
 cd "$ROOT/backend" && npm run build && cd "$ROOT" || { echo -e "${RED}Backend build failed${NC}"; exit 1; }

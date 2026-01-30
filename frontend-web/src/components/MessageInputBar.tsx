@@ -1,7 +1,3 @@
-import { useRef, useEffect } from 'react';
-
-const MAX_TEXTAREA_ROWS = 5;
-const LINE_HEIGHT = 24;
 const INPUT_BAR_MIN_H = 48;
 const BTN_ICON = 'shrink-0 p-2 rounded-full text-[#86868a] hover:text-white hover:bg-white/10 transition-colors';
 
@@ -32,22 +28,7 @@ export const MessageInputBar = ({
   hasAttachments = false,
   renderMic,
 }: MessageInputBarProps) => {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
   const canSend = (value.trim().length > 0 || hasAttachments) && !isSending;
-
-  const adjustHeight = () => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    const lineCount = (el.value || '').split('\n').length;
-    const rows = Math.min(Math.max(1, lineCount), MAX_TEXTAREA_ROWS);
-    el.style.height = `${Math.max(rows * LINE_HEIGHT, INPUT_BAR_MIN_H - 16)}px`;
-  };
-
-  useEffect(() => {
-    adjustHeight();
-  }, [value]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,21 +56,22 @@ export const MessageInputBar = ({
             <path strokeLinecap="round" strokeLinejoin="round" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </button>
-        <textarea
-          ref={textareaRef}
+        <input
+          type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          rows={1}
-          className="flex-1 min-w-0 px-2 py-2 bg-transparent text-white placeholder-[#86868a] focus:outline-none resize-none overflow-y-auto max-h-[120px]"
-          style={{ height: INPUT_BAR_MIN_H - 16, lineHeight: `${LINE_HEIGHT}px`, minHeight: INPUT_BAR_MIN_H - 16 }}
+          className="flex-1 min-w-0 px-2 py-2 bg-transparent text-white placeholder-[#86868a] focus:outline-none border-0 text-base"
+          style={{ minHeight: INPUT_BAR_MIN_H - 16 }}
           disabled={disabled}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter') {
               e.preventDefault();
               if (canSend) onSubmit();
             }
           }}
+          autoComplete="off"
+          aria-label="Сообщение"
         />
         <button
           type="button"

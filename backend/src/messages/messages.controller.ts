@@ -11,6 +11,7 @@ import {
   UseGuards,
   Inject,
   forwardRef,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -35,12 +36,14 @@ export class MessagesController {
     @Query('chatId') chatId: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @CurrentUser() user?: { id: string },
   ) {
-    return this.messagesService.getMessages(
-      chatId,
-      limit ? parseInt(limit) : 50,
-      offset ? parseInt(offset) : 0,
-    );
+    if (!chatId || typeof chatId !== 'string') {
+      throw new BadRequestException('chatId обязателен');
+    }
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit || '50', 10) || 50));
+    const offsetNum = Math.max(0, parseInt(offset || '0', 10) || 0);
+    return this.messagesService.getMessages(chatId, user?.id, limitNum, offsetNum);
   }
 
   @Post('upload-audio')

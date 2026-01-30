@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, MinLength, MaxLength, IsOptional, IsBoolean } from 'class-validator';
+import { IsString, IsNotEmpty, MaxLength, IsOptional, IsBoolean } from 'class-validator';
 
 export class SendMessageDto {
   @IsString()
@@ -7,6 +7,7 @@ export class SendMessageDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(50000, { message: 'Сообщение не должно превышать 50000 символов' })
   content?: string;
 
   @IsString()
@@ -23,6 +24,7 @@ export class SendMessageDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(50000)
   encryptedContent?: string;
 
   @IsString()

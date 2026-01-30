@@ -51,6 +51,7 @@ export const EmojiPicker = ({ open, onClose, onSelect, anchorRef }: EmojiPickerP
             className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 text-xl leading-none"
             onClick={() => {
               onSelect(emoji);
+              onClose();
             }}
           >
             {emoji}
