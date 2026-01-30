@@ -233,8 +233,16 @@ export const VideoCall = ({
   const connectionInfo = webrtcServiceRef.current?.getConnectionInfo() ?? null;
 
   const handleForcePlay = () => {
-    remoteVideoRef.current?.play().catch(() => {});
-    remoteAudioRef.current?.play().catch(() => {});
+    if (remoteStream) {
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.play().catch(() => {});
+      }
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        remoteAudioRef.current.play().catch(() => {});
+      }
+    }
     webrtcLogService.add('Force play (remote video/audio)');
   };
 
@@ -441,9 +449,9 @@ export const VideoCall = ({
             )}
           </div>
         )}
+        {/* Без key — иначе при добавлении треков элемент пересоздаётся и на телефоне теряется srcObject */}
         <video
           ref={remoteVideoRef}
-          key={remoteStream ? remoteStream.getTracks().map((t) => t.id).join(',') || 'remote' : 'remote'}
           autoPlay
           playsInline
           muted={false}
