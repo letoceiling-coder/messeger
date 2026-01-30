@@ -1,6 +1,7 @@
 #!/bin/bash
 # Na servere: poluchit kod iz Git, sobirat, perezapustit.
 # Zapusk: cd /var/www/messager && bash scripts/pull-and-update.sh
+# Optimizaciya: npm ci bystrej; propusk npm install, esli package*.json ne menjalis'.
 
 set -e
 
@@ -14,27 +15,55 @@ cd "$ROOT" || { echo -e "${RED}Error: dir $ROOT not found${NC}"; exit 1; }
 
 echo -e "${GREEN}=== Git pull + update on server ===${NC}"
 
-echo -e "${YELLOW}[0/5] Git pull...${NC}"
-git pull --rebase || git pull
+BEFORE_REF=$(git rev-parse HEAD 2>/dev/null) || true
+echo -e "${YELLOW}[0/6] Git pull...${NC}"
+git fetch origin
+if git show-ref --verify --quiet refs/remotes/origin/main; then
+  git reset --hard origin/main
+elif git show-ref --verify --quiet refs/remotes/origin/master; then
+  git reset --hard origin/master
+else
+  git pull --rebase 2>/dev/null || git pull || { echo -e "${RED}Git pull failed. Fix branch/remote on server.${NC}"; exit 1; }
+fi
 
-echo -e "${YELLOW}[1/5] npm install (frontend)...${NC}"
-cd "$ROOT/frontend-web" && npm install && cd "$ROOT"
+DEPS_FRONT_CHANGED=false
+DEPS_BACK_CHANGED=false
+if [ -n "$BEFORE_REF" ]; then
+  git diff --name-only "$BEFORE_REF" HEAD -- frontend-web/package.json frontend-web/package-lock.json 2>/dev/null | grep -q . && DEPS_FRONT_CHANGED=true
+  git diff --name-only "$BEFORE_REF" HEAD -- backend/package.json backend/package-lock.json 2>/dev/null | grep -q . && DEPS_BACK_CHANGED=true
+else
+  DEPS_FRONT_CHANGED=true
+  DEPS_BACK_CHANGED=true
+fi
 
-echo -e "${YELLOW}[2/5] Frontend build...${NC}"
+if [ "$DEPS_FRONT_CHANGED" = true ]; then
+  echo -e "${YELLOW}[1/6] npm install (frontend)...${NC}"
+  (cd "$ROOT/frontend-web" && npm ci 2>/dev/null) || (cd "$ROOT/frontend-web" && npm install)
+else
+  echo -e "${YELLOW}[1/6] Frontend deps unchanged, skip npm install${NC}"
+fi
+cd "$ROOT"
+
+echo -e "${YELLOW}[2/6] Frontend build...${NC}"
 cd "$ROOT/frontend-web" && npm run build && cd "$ROOT" || { echo -e "${RED}Frontend build failed${NC}"; exit 1; }
 
-echo -e "${YELLOW}[3/5] npm install (backend)...${NC}"
-cd "$ROOT/backend" && npm install && cd "$ROOT"
+if [ "$DEPS_BACK_CHANGED" = true ]; then
+  echo -e "${YELLOW}[3/6] npm install (backend)...${NC}"
+  (cd "$ROOT/backend" && npm ci 2>/dev/null) || (cd "$ROOT/backend" && npm install)
+else
+  echo -e "${YELLOW}[3/6] Backend deps unchanged, skip npm install${NC}"
+fi
+cd "$ROOT"
 
-echo -e "${YELLOW}[4/5] Backend build...${NC}"
+echo -e "${YELLOW}[4/6] Backend build...${NC}"
 cd "$ROOT/backend" && npm run build && cd "$ROOT" || { echo -e "${RED}Backend build failed${NC}"; exit 1; }
 
-echo -e "${YELLOW}[5/5] PM2 restart...${NC}"
+echo -e "${YELLOW}[5/6] PM2 restart...${NC}"
 cd "$ROOT/backend" && pm2 restart messager-backend --update-env || pm2 start ecosystem.config.js --name messager-backend
 pm2 save 2>/dev/null || true
 
+echo -e "${YELLOW}[6/6] Nginx reload...${NC}"
 if command -v nginx >/dev/null 2>&1; then
-  echo -e "${YELLOW}Nginx reload...${NC}"
   (sudo nginx -t 2>/dev/null && (sudo systemctl reload nginx 2>/dev/null || sudo service nginx reload 2>/dev/null)) || true
 fi
 
