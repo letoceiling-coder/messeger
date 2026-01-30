@@ -1,22 +1,56 @@
 import { webrtcLogService } from './webrtc-log.service';
 
 function getIceServers(): RTCIceServer[] {
-  const servers: RTCIceServer[] = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-  ];
-  const turnUrl = import.meta.env.VITE_TURN_URL;
-  if (turnUrl && typeof turnUrl === 'string' && turnUrl.trim()) {
-    const turn: RTCIceServer = { urls: turnUrl.trim() };
-    const user = import.meta.env.VITE_TURN_USER;
-    const cred = import.meta.env.VITE_TURN_CREDENTIAL;
-    if (user != null && String(user).trim()) turn.username = String(user).trim();
-    if (cred != null && String(cred).trim()) turn.credential = String(cred).trim();
-    servers.push(turn);
+  const servers: RTCIceServer[] = [];
+  
+  // Metered.ca STUN/TURN (if configured)
+  const turnUser = import.meta.env.VITE_TURN_USER;
+  const turnCred = import.meta.env.VITE_TURN_CREDENTIAL;
+  
+  if (turnUser && turnCred && String(turnUser).trim() && String(turnCred).trim()) {
+    const username = String(turnUser).trim();
+    const credential = String(turnCred).trim();
+    
+    // Metered STUN
+    servers.push({ urls: 'stun:stun.relay.metered.ca:80' });
+    
+    // Metered TURN UDP
+    servers.push({
+      urls: 'turn:global.relay.metered.ca:80',
+      username,
+      credential,
+    });
+    
+    // Metered TURN TCP
+    servers.push({
+      urls: 'turn:global.relay.metered.ca:80?transport=tcp',
+      username,
+      credential,
+    });
+    
+    // Metered TURN 443
+    servers.push({
+      urls: 'turn:global.relay.metered.ca:443',
+      username,
+      credential,
+    });
+    
+    // Metered TURNS (TLS)
+    servers.push({
+      urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+      username,
+      credential,
+    });
+    
+    webrtcLogService.add(`ICE servers: Metered (${servers.length} servers)`);
+  } else {
+    // Fallback to Google STUN
+    servers.push({ urls: 'stun:stun.l.google.com:19302' });
+    servers.push({ urls: 'stun:stun1.l.google.com:19302' });
+    servers.push({ urls: 'stun:stun2.l.google.com:19302' });
+    webrtcLogService.add('ICE servers: Google STUN (fallback)');
   }
+  
   return servers;
 }
 
@@ -181,6 +215,11 @@ export class WebRTCService {
         }
       };
 
+      this.peerConnection.onicegatheringstatechange = () => {
+        const state = this.peerConnection?.iceGatheringState;
+        webrtcLogService.add('ICE gathering (caller): ' + state);
+      };
+
       this.peerConnection.onconnectionstatechange = () => {
         const state = this.peerConnection?.connectionState;
         const ice = this.peerConnection?.iceConnectionState;
@@ -281,6 +320,7 @@ export class WebRTCService {
       };
 
       this.peerConnection.onicecandidate = (event) => {
+        if (event.candidate) webrtcLogService.add('ICE candidate (local)');
         if (event.candidate && this.chatId) {
           this.socket.emit('call:ice-candidate', {
             chatId: this.chatId,
@@ -289,10 +329,15 @@ export class WebRTCService {
         }
       };
 
+      this.peerConnection.onicegatheringstatechange = () => {
+        const state = this.peerConnection?.iceGatheringState;
+        webrtcLogService.add('ICE gathering (answerer): ' + state);
+      };
+
       this.peerConnection.onconnectionstatechange = () => {
         const state = this.peerConnection?.connectionState;
         const ice = this.peerConnection?.iceConnectionState;
-        if (typeof console?.log === 'function') console.log('[WebRTC] connectionState (answerer):', state, 'ice:', ice);
+        webrtcLogService.add('connectionState (answerer): ' + state + ' ice: ' + ice);
         if (state === 'failed') this.onConnectionFailedCallback?.();
       };
 
