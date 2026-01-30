@@ -130,10 +130,13 @@ export const VideoCall = ({
   }, [localStream]);
 
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
-      remoteVideoRef.current.play().catch(() => {});
-    }
+    if (!remoteVideoRef.current || !remoteStream) return;
+    remoteVideoRef.current.srcObject = remoteStream;
+    // На мобильных (Android) воспроизведение может начаться с задержкой — пробуем play несколько раз
+    const play = () => remoteVideoRef.current?.play().catch(() => {});
+    play();
+    const t = setTimeout(play, 300);
+    return () => clearTimeout(t);
   }, [remoteStream]);
 
   // Голосовой звонок: воспроизведение удалённого аудио (элемент <audio> в блоке ниже)

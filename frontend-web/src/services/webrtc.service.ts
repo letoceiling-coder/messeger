@@ -111,9 +111,12 @@ export class WebRTCService {
     }
 
     try {
+      // Ограничения для стабильной работы на ПК и мобильных (Android/iOS)
       this.localStream = await navigator.mediaDevices.getUserMedia({
-        video: useVideo,
         audio: true,
+        video: useVideo
+          ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+          : false,
       });
 
       this.peerConnection = new RTCPeerConnection({
@@ -125,22 +128,18 @@ export class WebRTCService {
         this.peerConnection!.addTrack(track, this.localStream!);
       });
 
-      // Удалённый поток: поддерживаем и streams[0], и один track (для стабильной двусторонней связи)
       this.peerConnection.ontrack = (event) => {
         const stream = event.streams?.[0] || (event.track ? new MediaStream([event.track]) : null);
         if (!stream) return;
         if (!this.remoteStream) {
-          this.remoteStream = stream;
+          this.remoteStream = new MediaStream(stream.getTracks());
         } else {
-          const rs = this.remoteStream;
-          if (rs) {
-            stream.getTracks().forEach((t) => {
-              if (!rs.getTracks().some((r) => r.id === t.id)) rs.addTrack(t);
-            });
-          }
+          stream.getTracks().forEach((t) => {
+            if (!this.remoteStream!.getTracks().some((r) => r.id === t.id)) this.remoteStream!.addTrack(t);
+          });
         }
         if (this.onRemoteStreamCallback) {
-          this.onRemoteStreamCallback(this.remoteStream);
+          this.onRemoteStreamCallback(new MediaStream(this.remoteStream.getTracks()));
         }
       };
 
@@ -193,8 +192,10 @@ export class WebRTCService {
 
     try {
       this.localStream = await navigator.mediaDevices.getUserMedia({
-        video: useVideo,
         audio: true,
+        video: useVideo
+          ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+          : false,
       });
 
       this.peerConnection = new RTCPeerConnection({
@@ -202,25 +203,18 @@ export class WebRTCService {
         iceCandidatePoolSize: 10,
       });
 
-      this.localStream.getTracks().forEach((track) => {
-        this.peerConnection!.addTrack(track, this.localStream!);
-      });
-
       this.peerConnection.ontrack = (event) => {
         const stream = event.streams?.[0] || (event.track ? new MediaStream([event.track]) : null);
         if (!stream) return;
         if (!this.remoteStream) {
-          this.remoteStream = stream;
+          this.remoteStream = new MediaStream(stream.getTracks());
         } else {
-          const rs = this.remoteStream;
-          if (rs) {
-            stream.getTracks().forEach((t) => {
-              if (!rs.getTracks().some((r) => r.id === t.id)) rs.addTrack(t);
-            });
-          }
+          stream.getTracks().forEach((t) => {
+            if (!this.remoteStream!.getTracks().some((r) => r.id === t.id)) this.remoteStream!.addTrack(t);
+          });
         }
         if (this.onRemoteStreamCallback && this.remoteStream) {
-          this.onRemoteStreamCallback(this.remoteStream);
+          this.onRemoteStreamCallback(new MediaStream(this.remoteStream.getTracks()));
         }
       };
 
@@ -235,6 +229,32 @@ export class WebRTCService {
 
       await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
       await this.drainIceQueue();
+
+      // Ответчик: отправляем свой поток через существующие transceivers (replaceTrack),
+      // чтобы обе стороны гарантированно видели и слышали друг друга (ПК ↔ мобильный).
+      const transceivers = this.peerConnection.getTransceivers?.() ?? [];
+      const audioTrack = this.localStream.getAudioTracks()[0];
+      const videoTrack = this.localStream.getVideoTracks()[0];
+      for (const tr of transceivers) {
+        if (!tr.sender || tr.sender.track != null) continue;
+        const kind = (tr.receiver?.track?.kind ?? (tr as { kind?: string }).kind ?? '').toLowerCase();
+        const localTrack = kind === 'video' ? videoTrack : audioTrack;
+        if (localTrack) {
+          try {
+            await tr.sender.replaceTrack(localTrack);
+            tr.direction = 'sendrecv';
+          } catch (e) {
+            console.warn('replaceTrack failed for', kind, e);
+          }
+        }
+      }
+      // Fallback: если getTransceivers нет или треки не подставились — добавляем addTrack
+      const hasSendTrack = transceivers.some((tr) => tr.sender?.track != null);
+      if (!hasSendTrack) {
+        this.localStream.getTracks().forEach((track) => {
+          this.peerConnection!.addTrack(track, this.localStream!);
+        });
+      }
 
       // Создание answer
       const answer = await this.peerConnection.createAnswer();
