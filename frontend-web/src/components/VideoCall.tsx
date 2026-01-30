@@ -53,9 +53,37 @@ export const VideoCall = ({
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const webrtcServiceRef = useRef<WebRTCService | null>(null);
   const acceptedOrConnectedRef = useRef(false);
+  const preCapturedStreamRef = useRef<MediaStream | null>(null);
   const { socket } = useWebSocket();
 
   callDurationRef.current = callDurationSeconds;
+
+  // Предзапрос медиа при входящем звонке — answer уходит быстрее после «Принять» (раньше работало при авто-принятии)
+  useEffect(() => {
+    if (!isIncoming || !offer || !chatId) return;
+    let cancelled = false;
+    navigator.mediaDevices
+      ?.getUserMedia({
+        audio: true,
+        video: videoMode ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } : false,
+      })
+      .then((stream) => {
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        if (preCapturedStreamRef.current) preCapturedStreamRef.current.getTracks().forEach((t) => t.stop());
+        preCapturedStreamRef.current = stream;
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (preCapturedStreamRef.current) {
+        preCapturedStreamRef.current.getTracks().forEach((t) => t.stop());
+        preCapturedStreamRef.current = null;
+      }
+    };
+  }, [isIncoming, offer, chatId, videoMode]);
 
   useEffect(() => {
     webrtcLogService.clear();
@@ -86,7 +114,7 @@ export const VideoCall = ({
 
     const initializeCall = async () => {
       try {
-        const opts = { video: videoMode };
+        const opts = { video: videoMode, preCapturedStream: preCapturedStreamRef.current ?? undefined };
         let stream: MediaStream;
         if (isIncoming && offer) {
           stream = await webrtc.handleOffer(chatId, offer, opts);
@@ -242,8 +270,12 @@ export const VideoCall = ({
                   try {
                     acceptedOrConnectedRef.current = true;
                     onAccepted?.();
-                    const stream = await webrtcServiceRef.current.handleOffer(chatId, offer, { video: videoMode });
+                    const stream = await webrtcServiceRef.current.handleOffer(chatId, offer, {
+                      video: videoMode,
+                      preCapturedStream: preCapturedStreamRef.current ?? undefined,
+                    });
                     setLocalStream(stream);
+                    preCapturedStreamRef.current = null;
                   } catch (error) {
                     console.error('Ошибка принятия звонка:', error);
                     acceptedOrConnectedRef.current = false;

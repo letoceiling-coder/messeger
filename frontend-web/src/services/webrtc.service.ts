@@ -235,7 +235,7 @@ export class WebRTCService {
   async handleOffer(
     chatId: string,
     offer: RTCSessionDescriptionInit,
-    options?: { video?: boolean },
+    options?: { video?: boolean; preCapturedStream?: MediaStream | null },
   ): Promise<MediaStream> {
     this.chatId = chatId;
     const useVideo = options?.video !== false;
@@ -247,17 +247,26 @@ export class WebRTCService {
     }
 
     try {
-      this.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: useVideo
-          ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
-          : false,
-      });
+      if (options?.preCapturedStream && options.preCapturedStream.getTracks().length > 0) {
+        this.localStream = options.preCapturedStream;
+      } else {
+        this.localStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: useVideo
+            ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+            : false,
+        });
+      }
 
+      const iceServersAnswerer = getIceServers();
+      const hasTurnAnswerer = iceServersAnswerer.some((s) => s.urls && String(s.urls).includes('turn:'));
+      const useRelayAnswerer = isMobileCaller() && hasTurnAnswerer;
       this.peerConnection = new RTCPeerConnection({
-        iceServers: getIceServers(),
+        iceServers: iceServersAnswerer,
         iceCandidatePoolSize: 10,
+        ...(useRelayAnswerer ? { iceTransportPolicy: 'relay' as RTCIceTransportPolicy } : {}),
       });
+      if (useRelayAnswerer) webrtcLogService.add('ICE policy (answerer): relay (TURN only, mobile)');
 
       this.peerConnection.ontrack = (event) => {
         webrtcLogService.add('ontrack (answerer): ' + (event.track?.kind ?? ''));
