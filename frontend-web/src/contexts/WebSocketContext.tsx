@@ -5,6 +5,13 @@ import { useAuth } from './AuthContext';
 /** Реальное время: userId -> true (онлайн) / false (оффлайн). Если ключа нет — использовать данные с API. */
 export type OnlineStatusMap = Record<string, boolean>;
 
+export interface IncomingCall {
+  chatId: string;
+  callerId: string;
+  offer: RTCSessionDescriptionInit;
+  videoMode?: boolean;
+}
+
 interface WebSocketContextType {
   socket: typeof websocketService;
   /** Статусы «в сети» по userId (обновляются по событиям user:online / user:offline) */
@@ -13,6 +20,12 @@ interface WebSocketContextType {
   isUserOnline: (userId: string | undefined, fallbackFromApi?: boolean) => boolean;
   /** Статус соединения: connected / disconnected / reconnecting */
   connectionStatus: ConnectionStatus;
+  /** Глобальный входящий звонок (доступен на любой странице) */
+  globalIncomingCall: IncomingCall | null;
+  /** Отклонить глобальный входящий звонок */
+  rejectGlobalCall: () => void;
+  /** Очистить глобальный входящий звонок после принятия */
+  clearGlobalCall: () => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
@@ -21,6 +34,7 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
   const { isAuthenticated } = useAuth();
   const [onlineStatus, setOnlineStatus] = useState<OnlineStatusMap>({});
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
+  const [globalIncomingCall, setGlobalIncomingCall] = useState<IncomingCall | null>(null);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -63,6 +77,43 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     return unsub;
   }, [isAuthenticated]);
 
+  // Глобальная обработка входящих звонков
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const handleCallOffer = (data: IncomingCall) => {
+      setGlobalIncomingCall(data);
+      // Воспроизведение рингтона (если нужно)
+      // soundService.playRingtone();
+    };
+
+    const handleCallEnd = (data: { chatId: string }) => {
+      setGlobalIncomingCall((prev) => (prev?.chatId === data.chatId ? null : prev));
+      // soundService.stopRingtone();
+    };
+
+    websocketService.on('call:offer', handleCallOffer);
+    websocketService.on('call:end', handleCallEnd);
+
+    return () => {
+      websocketService.off('call:offer', handleCallOffer);
+      websocketService.off('call:end', handleCallEnd);
+    };
+  }, [isAuthenticated]);
+
+  const rejectGlobalCall = useCallback(() => {
+    if (globalIncomingCall) {
+      websocketService.emit('call:reject', { chatId: globalIncomingCall.chatId });
+      setGlobalIncomingCall(null);
+      // soundService.stopRingtone();
+    }
+  }, [globalIncomingCall]);
+
+  const clearGlobalCall = useCallback(() => {
+    setGlobalIncomingCall(null);
+    // soundService.stopRingtone();
+  }, []);
+
   const isUserOnline = useCallback(
     (userId: string | undefined, fallbackFromApi?: boolean): boolean => {
       if (!userId) return false;
@@ -73,7 +124,17 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
   );
 
   return (
-    <WebSocketContext.Provider value={{ socket: websocketService, onlineStatus, isUserOnline, connectionStatus }}>
+    <WebSocketContext.Provider
+      value={{
+        socket: websocketService,
+        onlineStatus,
+        isUserOnline,
+        connectionStatus,
+        globalIncomingCall,
+        rejectGlobalCall,
+        clearGlobalCall,
+      }}
+    >
       {children}
     </WebSocketContext.Provider>
   );

@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import { ChatsProvider } from './contexts/ChatsContext';
 import { ConnectionBanner } from './components/ConnectionBanner';
+import { GlobalIncomingCallOverlay } from './components/GlobalIncomingCallOverlay';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ChatsPage } from './pages/ChatsPage';
@@ -18,6 +19,7 @@ function AppRoutes() {
   return (
     <>
       <ConnectionBanner />
+      <GlobalIncomingCallOverlay />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Message, Chat, ChatMemberUser, MessageDeliveryStatus } from '../types';
 import { messagesService } from '../services/messages.service';
 import { chatsService } from '../services/chats.service';
@@ -20,6 +20,7 @@ import { checkMediaDevices } from '../utils/mediaDevices';
 export const ChatPage = () => {
   const { chatId } = useParams<{ chatId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [chat, setChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -51,7 +52,7 @@ export const ChatPage = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastTempMessageIdRef = useRef<string | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { socket, isUserOnline, connectionStatus } = useWebSocket();
+  const { socket, isUserOnline, connectionStatus, globalIncomingCall, clearGlobalCall } = useWebSocket();
   const { user } = useAuth();
 
   const contact: ChatMemberUser | null = chat?.members?.find((m) => m.userId !== user?.id)?.user ?? null;
@@ -112,18 +113,6 @@ export const ChatPage = () => {
       scrollToBottom();
     };
 
-    const handleCallOffer = (data: {
-      chatId: string;
-      offer: RTCSessionDescriptionInit;
-      callerId: string;
-    }) => {
-      if (data.chatId === chatId) {
-        incomingCallRef.current = data;
-        setIncomingCall(data);
-        soundService.playRingtone();
-      }
-    };
-
     const handleCallEnd = (data: { chatId: string }) => {
       if (data.chatId === chatId) {
         soundService.stopRingtone();
@@ -155,7 +144,6 @@ export const ChatPage = () => {
     };
 
     socket.onMessageReceived(handleMessageReceived);
-    socket.on('call:offer', handleCallOffer);
     socket.on('call:end', handleCallEnd);
     socket.onDeliveryStatus(handleDeliveryStatus);
     socket.on('message:deleted', handleMessageDeleted);
@@ -163,7 +151,6 @@ export const ChatPage = () => {
 
     return () => {
       socket.offMessageReceived(handleMessageReceived);
-      socket.off('call:offer', handleCallOffer);
       socket.off('call:end', handleCallEnd);
       socket.offDeliveryStatus(handleDeliveryStatus);
       socket.off('message:deleted', handleMessageDeleted);
@@ -182,6 +169,25 @@ export const ChatPage = () => {
       setHasCameraAvailable(devices.hasCamera);
     });
   }, []);
+
+  // Обработка входящего звонка из URL параметров (после принятия из глобального оверлея)
+  useEffect(() => {
+    const incomingCallParam = searchParams.get('incomingCall');
+    const videoModeParam = searchParams.get('videoMode');
+    
+    if (incomingCallParam === 'true' && globalIncomingCall && globalIncomingCall.chatId === chatId) {
+      // Установить входящий звонок
+      setIncomingCall({
+        ...globalIncomingCall,
+        videoMode: videoModeParam === 'true',
+      });
+      incomingCallRef.current = globalIncomingCall;
+      clearGlobalCall();
+      
+      // Очистить URL параметры
+      setSearchParams({});
+    }
+  }, [chatId, globalIncomingCall, searchParams, setSearchParams, clearGlobalCall]);
 
   useEffect(() => {
     scrollToBottom();

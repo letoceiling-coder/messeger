@@ -306,7 +306,6 @@ export class WebRTCService {
 
         if (useVideo && !usedVideo) {
           webrtcLogService.add('Camera not available (answerer), using audio-only');
-          alert('Камера недоступна. Звонок будет только аудио.');
         }
       }
 
