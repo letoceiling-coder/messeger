@@ -56,6 +56,7 @@ export const VideoCall = ({
   const webrtcServiceRef = useRef<WebRTCService | null>(null);
   const acceptedOrConnectedRef = useRef(false);
   const preCapturedStreamRef = useRef<MediaStream | null>(null);
+  const userInteractedRef = useRef(false);
   const { socket } = useWebSocket();
 
   callDurationRef.current = callDurationSeconds;
@@ -136,6 +137,8 @@ export const VideoCall = ({
     // Входящий звонок: не принимать автоматически — только по нажатию «Принять»
     const isIncomingWaiting = isIncoming && offer;
     if (!isIncomingWaiting) {
+      // Для caller user gesture уже есть (клик "Позвонить" в родительском компоненте)
+      userInteractedRef.current = true;
       acceptedOrConnectedRef.current = true;
       initializeCall();
     }
@@ -175,14 +178,20 @@ export const VideoCall = ({
     const el = remoteVideoRef.current;
     el.srcObject = remoteStream;
     const hasVideo = remoteStream.getVideoTracks().length > 0;
-    const play = () => el.play().catch(() => {});
+    const play = () => {
+      // Проверяем, был ли user interaction
+      if (userInteractedRef.current) {
+        el.play().catch(() => {});
+      }
+    };
     play();
-    const t1 = setTimeout(play, 300);
-    const t2 = setTimeout(play, 800);
-    const t3 = setTimeout(play, 1500);
+    const t1 = setTimeout(play, 100);
+    const t2 = setTimeout(play, 300);
+    const t3 = setTimeout(play, 800);
+    const t4 = setTimeout(play, 1500);
     // На мобильных (ответчик) видео часто появляется с задержкой — несколько попыток play
-    const t4 = hasVideo ? setTimeout(play, 2500) : null;
-    const t5 = hasVideo ? setTimeout(play, 4000) : null;
+    const t5 = hasVideo ? setTimeout(play, 2500) : null;
+    const t6 = hasVideo ? setTimeout(play, 4000) : null;
     const interval = hasVideo ? setInterval(play, 500) : null;
     const stopInterval = hasVideo ? setTimeout(() => { if (interval) clearInterval(interval); }, 5000) : null;
     const onAddTrack = () => {
@@ -191,8 +200,8 @@ export const VideoCall = ({
     };
     remoteStream.onaddtrack = onAddTrack;
     return () => {
-      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
-      if (t4) clearTimeout(t4); if (t5) clearTimeout(t5);
+      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
+      if (t5) clearTimeout(t5); if (t6) clearTimeout(t6);
       if (interval) clearInterval(interval); if (stopInterval) clearTimeout(stopInterval);
       remoteStream.onaddtrack = null;
     };
@@ -203,18 +212,25 @@ export const VideoCall = ({
     if (!remoteAudioRef.current || !remoteStream) return;
     const el = remoteAudioRef.current;
     el.srcObject = remoteStream;
-    const play = () => el.play().catch(() => {});
+    const play = () => {
+      // Проверяем, был ли user interaction
+      if (userInteractedRef.current) {
+        el.play().catch(() => {});
+      }
+    };
     // Несколько попыток play() для обхода autoplay политики браузера на ПК
     play();
-    const t1 = setTimeout(play, 300);
-    const t2 = setTimeout(play, 800);
-    const t3 = setTimeout(play, 1500);
-    const t4 = setTimeout(play, 2500);
+    const t1 = setTimeout(play, 100);
+    const t2 = setTimeout(play, 300);
+    const t3 = setTimeout(play, 800);
+    const t4 = setTimeout(play, 1500);
+    const t5 = setTimeout(play, 2500);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
       clearTimeout(t4);
+      clearTimeout(t5);
     };
   }, [remoteStream]);
 
@@ -311,6 +327,8 @@ export const VideoCall = ({
               onClick={async () => {
                 if (offer && webrtcServiceRef.current) {
                   try {
+                    // Устанавливаем флаг user interaction для разблокировки autoplay
+                    userInteractedRef.current = true;
                     acceptedOrConnectedRef.current = true;
                     onAccepted?.();
                     const stream = await webrtcServiceRef.current.handleOffer(chatId, offer, {
@@ -319,11 +337,6 @@ export const VideoCall = ({
                     });
                     setLocalStream(stream);
                     preCapturedStreamRef.current = null;
-                    // Явно запускаем play() используя user gesture от клика "Принять"
-                    setTimeout(() => {
-                      if (remoteVideoRef.current) remoteVideoRef.current.play().catch(() => {});
-                      if (remoteAudioRef.current) remoteAudioRef.current.play().catch(() => {});
-                    }, 100);
                   } catch (error) {
                     console.error('Ошибка принятия звонка:', error);
                     acceptedOrConnectedRef.current = false;
