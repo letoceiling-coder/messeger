@@ -646,6 +646,7 @@ export class MessagerWebSocketGateway
     try {
       const callInfo = this.activeCalls.get(dto.chatId);
       if (!callInfo) {
+        this.logger.warn(`ICE candidate for unknown call: ${dto.chatId}`);
         return;
       }
 
@@ -661,6 +662,9 @@ export class MessagerWebSocketGateway
           chatId: dto.chatId,
           candidate: dto.candidate,
         });
+        this.logger.log(`ICE candidate relayed: from userId=${client.userId} to userId=${receiverId} (socket=${receiverSocketId})`);
+      } else {
+        this.logger.warn(`ICE candidate receiver not connected: userId=${receiverId}`);
       }
     } catch (error) {
       this.logger.error(`Error handling ICE candidate: ${error.message}`);
