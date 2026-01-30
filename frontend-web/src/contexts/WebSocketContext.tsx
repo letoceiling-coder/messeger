@@ -79,7 +79,7 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
 
   // Глобальная обработка входящих звонков
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || connectionStatus !== 'connected') return;
 
     const handleCallOffer = (data: IncomingCall) => {
       setGlobalIncomingCall(data);
@@ -99,7 +99,7 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
       websocketService.off('call:offer', handleCallOffer);
       websocketService.off('call:end', handleCallEnd);
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, connectionStatus]);
 
   const rejectGlobalCall = useCallback(() => {
     if (globalIncomingCall) {
