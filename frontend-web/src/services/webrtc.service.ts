@@ -305,7 +305,10 @@ export class WebRTCService {
       this.peerConnection.ontrack = (event) => {
         webrtcLogService.add('ontrack (answerer): ' + (event.track?.kind ?? ''));
         const stream = event.streams?.[0] || (event.track ? new MediaStream([event.track]) : null);
-        if (!stream) return;
+        if (!stream) {
+          webrtcLogService.add('ontrack: no stream');
+          return;
+        }
         if (!this.remoteStream) {
           this.remoteStream = new MediaStream(stream.getTracks());
         } else {
@@ -313,8 +316,12 @@ export class WebRTCService {
             if (!this.remoteStream!.getTracks().some((r) => r.id === t.id)) this.remoteStream!.addTrack(t);
           });
         }
+        webrtcLogService.add(`ontrack: remoteStream tracks=${this.remoteStream.getTracks().length}, callback=${!!this.onRemoteStreamCallback}`);
         if (this.onRemoteStreamCallback && this.remoteStream) {
+          webrtcLogService.add('Calling onRemoteStreamCallback...');
           this.onRemoteStreamCallback(new MediaStream(this.remoteStream.getTracks()));
+        } else if (!this.onRemoteStreamCallback) {
+          webrtcLogService.add('onRemoteStreamCallback NOT SET!');
         }
       };
 
