@@ -45,6 +45,8 @@ fi
 cd "$ROOT"
 
 echo -e "${YELLOW}[2/6] Frontend build...${NC}"
+# Удаляем старые .js из src/, чтобы Vite собирал из .tsx/.ts, а не из устаревших скомпилированных .js
+find "$ROOT/frontend-web/src" -name '*.js' -type f -delete 2>/dev/null || true
 cd "$ROOT/frontend-web" && npm run build && cd "$ROOT" || { echo -e "${RED}Frontend build failed${NC}"; exit 1; }
 
 if [ "$DEPS_BACK_CHANGED" = true ]; then
