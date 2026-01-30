@@ -35,8 +35,8 @@ export const GlobalIncomingCallOverlay = () => {
 
   const handleAccept = () => {
     soundService.stopRingtone();
-    clearGlobalCall();
     // Перенаправление в чат с параметрами для автоматического принятия звонка
+    // НЕ очищаем globalIncomingCall здесь - это сделает ChatPage после обработки
     navigate(`/chat/${globalIncomingCall.chatId}?incomingCall=true&videoMode=${globalIncomingCall.videoMode ?? true}`);
   };
 
