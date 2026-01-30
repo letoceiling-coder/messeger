@@ -178,10 +178,16 @@ export const VideoCall = ({
     const el = remoteVideoRef.current;
     el.srcObject = remoteStream;
     const hasVideo = remoteStream.getVideoTracks().length > 0;
+    webrtcLogService.add(`Auto-play video: userInteracted=${userInteractedRef.current}, hasVideo=${hasVideo}`);
     const play = () => {
       // Проверяем, был ли user interaction
       if (userInteractedRef.current) {
-        el.play().catch(() => {});
+        webrtcLogService.add('Attempting video.play()...');
+        el.play()
+          .then(() => webrtcLogService.add('video.play() SUCCESS'))
+          .catch((err) => webrtcLogService.add(`video.play() BLOCKED: ${err.message || err}`));
+      } else {
+        webrtcLogService.add('video.play() skipped: no user interaction yet');
       }
     };
     play();
@@ -195,6 +201,7 @@ export const VideoCall = ({
     const interval = hasVideo ? setInterval(play, 500) : null;
     const stopInterval = hasVideo ? setTimeout(() => { if (interval) clearInterval(interval); }, 5000) : null;
     const onAddTrack = () => {
+      webrtcLogService.add('video onaddtrack');
       play();
       if (remoteStream?.getVideoTracks().length) play();
     };
@@ -212,10 +219,16 @@ export const VideoCall = ({
     if (!remoteAudioRef.current || !remoteStream) return;
     const el = remoteAudioRef.current;
     el.srcObject = remoteStream;
+    webrtcLogService.add(`Auto-play audio: userInteracted=${userInteractedRef.current}`);
     const play = () => {
       // Проверяем, был ли user interaction
       if (userInteractedRef.current) {
-        el.play().catch(() => {});
+        webrtcLogService.add('Attempting audio.play()...');
+        el.play()
+          .then(() => webrtcLogService.add('audio.play() SUCCESS'))
+          .catch((err) => webrtcLogService.add(`audio.play() BLOCKED: ${err.message || err}`));
+      } else {
+        webrtcLogService.add('audio.play() skipped: no user interaction yet');
       }
     };
     // Несколько попыток play() для обхода autoplay политики браузера на ПК
