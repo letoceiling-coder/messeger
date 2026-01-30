@@ -291,7 +291,7 @@ export class WebRTCService {
       if (options?.preCapturedStream && options.preCapturedStream.getTracks().length > 0) {
         this.localStream = options.preCapturedStream;
       } else {
-        const { stream, usedVideo, usedAudio } = await getMediaStreamWithFallback({
+        const { stream, usedVideo } = await getMediaStreamWithFallback({
           audio: true,
           video: useVideo
             ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }

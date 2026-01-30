@@ -15,6 +15,7 @@ import { mediaService } from '../services/media.service';
 import { api } from '../services/api';
 import { soundService } from '../services/sound.service';
 import { callStatsService } from '../services/call-stats.service';
+import { checkMediaDevices } from '../utils/mediaDevices';
 
 export const ChatPage = () => {
   const { chatId } = useParams<{ chatId: string }>();
