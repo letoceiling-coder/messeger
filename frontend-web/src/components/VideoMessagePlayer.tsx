@@ -7,7 +7,6 @@ interface VideoMessagePlayerProps {
   onClick?: (e: React.MouseEvent) => void;
 }
 
-const MENU_ITEM_H = 40;
 const MENU_MAX_H = 280;
 
 export const VideoMessagePlayer = ({ src, className = '', onFullscreen, onClick }: VideoMessagePlayerProps) => {
