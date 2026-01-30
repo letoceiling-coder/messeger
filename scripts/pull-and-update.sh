@@ -57,10 +57,11 @@ else
 fi
 cd "$ROOT"
 
-echo -e "${YELLOW}[4/6] Prisma migrate (backend)...${NC}"
+echo -e "${YELLOW}[4/7] Prisma migrate (backend)...${NC}"
 (cd "$ROOT/backend" && npx prisma migrate deploy 2>/dev/null) || (cd "$ROOT/backend" && npx prisma db push 2>/dev/null) || true
+(cd "$ROOT/backend" && npx prisma generate) || true
 
-echo -e "${YELLOW}[5/6] Backend build...${NC}"
+echo -e "${YELLOW}[5/7] Backend build...${NC}"
 cd "$ROOT/backend" && npm run build && cd "$ROOT" || { echo -e "${RED}Backend build failed${NC}"; exit 1; }
 
 echo -e "${YELLOW}[6/6] PM2 restart...${NC}"
