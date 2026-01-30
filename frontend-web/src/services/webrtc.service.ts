@@ -20,6 +20,13 @@ function getIceServers(): RTCIceServer[] {
   return servers;
 }
 
+function isMobile(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const narrow = typeof window !== 'undefined' && window.innerWidth < 768;
+  return narrow || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+}
+
 export class WebRTCService {
   private peerConnection: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
@@ -149,11 +156,16 @@ export class WebRTCService {
           : false,
       });
 
-      // TURN в списке, но без принудительного relay — иначе при недоступном TURN соединение всегда падает
+      // Звонок с телефона на ПК: без relay ICE на телефоне уходит в failed. Включаем relay только для звонящего на мобильном.
+      const iceServers = getIceServers();
+      const hasTurn = iceServers.some((s) => s.urls && String(s.urls).includes('turn:'));
+      const useRelay = isMobile() && hasTurn;
       this.peerConnection = new RTCPeerConnection({
-        iceServers: getIceServers(),
+        iceServers,
         iceCandidatePoolSize: 10,
+        ...(useRelay ? { iceTransportPolicy: 'relay' as RTCIceTransportPolicy } : {}),
       });
+      if (useRelay) webrtcLogService.add('ICE: relay (TURN only, mobile caller)');
 
       this.localStream.getTracks().forEach((track) => {
         this.peerConnection!.addTrack(track, this.localStream!);
