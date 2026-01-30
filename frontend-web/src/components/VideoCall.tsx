@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { WebRTCService } from '../services/webrtc.service';
 import { webrtcLogService } from '../services/webrtc-log.service';
 import { useWebSocket } from '../contexts/WebSocketContext';
+import { soundService } from '../services/sound.service';
 
 interface VideoCallProps {
   chatId: string;
@@ -61,6 +62,25 @@ export const VideoCall = ({
 
   callDurationRef.current = callDurationSeconds;
 
+  // Рингтон для инициатора звонка (ждет ответа)
+  useEffect(() => {
+    if (!isIncoming && isConnecting) {
+      // Для инициатора: начать воспроизведение рингтона
+      soundService.playRingtone();
+    }
+    return () => {
+      // Остановить рингтон при размонтировании или подключении
+      soundService.stopRingtone();
+    };
+  }, [isIncoming, isConnecting]);
+
+  // Остановить рингтон при установке соединения (remoteStream появился)
+  useEffect(() => {
+    if (remoteStream && !isIncoming) {
+      soundService.stopRingtone();
+    }
+  }, [remoteStream, isIncoming]);
+
   // Предзапрос медиа при входящем звонке — answer уходит быстрее после «Принять» (раньше работало при авто-принятии)
   useEffect(() => {
     if (!isIncoming || !offer || !chatId) return;
@@ -102,16 +122,19 @@ export const VideoCall = ({
     });
 
     webrtc.onCallEnd(() => {
+      soundService.stopRingtone();
       onCallEndWithStats?.(callDurationRef.current, chatId, videoMode);
       onEnd();
     });
 
     webrtc.onConnectionFailed(() => {
+      soundService.stopRingtone();
       setIsConnecting(false);
       setConnectionError(true);
     });
 
     webrtc.onNoAnswer(() => {
+      soundService.stopRingtone();
       setIsConnecting(false);
       setNoAnswer(true);
     });
