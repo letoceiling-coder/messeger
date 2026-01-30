@@ -2,8 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Вся высота экрана без скролла страницы; на мобильных — 100dvh */
+html {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+  left: 0;
+  top: 0;
+}
+
 body {
   margin: 0;
+  height: 100%;
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+  left: 0;
+  top: 0;
+  -webkit-overflow-scrolling: touch;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
@@ -14,5 +32,34 @@ body {
 }
 
 #root {
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Контейнер роутера занимает всю высоту, чтобы страницы могли использовать h-full */
+#root > div {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Плашка воспроизведения аудио — строго внутри экрана, не уходит за край */
+.chat-audio-wrap {
+  max-width: min(220px, 100%);
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 4px;
+}
+.chat-audio-wrap audio {
+  display: block;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  height: 36px;
+  box-sizing: border-box;
 }

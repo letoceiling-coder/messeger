@@ -113,7 +113,7 @@ export const ChatPage = () => {
       socket.off('call:offer', handleCallOffer);
       socket.offDeliveryStatus(handleDeliveryStatus);
     };
-  }, [chatId, socket, navigate]);
+  }, [chatId, socket, navigate, user?.id]);
 
   useEffect(() => {
     scrollToBottom();
@@ -124,7 +124,12 @@ export const ChatPage = () => {
     try {
       const data = await messagesService.getMessages(chatId);
       const decryptedMessages = await Promise.all(
-        data.map(async (msg) => {
+        data.map(async (msg: Message & { messageDeliveries?: { status: string }[] }) => {
+          let out = { ...msg } as Message;
+          const status = msg.messageDeliveries?.[0]?.status;
+          if (status === 'read' || status === 'delivered' || status === 'sent') {
+            out.deliveryStatus = status as MessageDeliveryStatus;
+          }
           if (msg.isEncrypted && msg.encryptedContent && msg.iv) {
             try {
               const decrypted = await encryptionService.decryptMessage(
@@ -132,13 +137,23 @@ export const ChatPage = () => {
                 msg.iv,
                 chatId,
               );
-              if (decrypted) return { ...msg, content: decrypted };
+              if (decrypted) out.content = decrypted;
             } catch {}
           }
-          return msg;
+          return out;
         }),
       );
-      setMessages(decryptedMessages.reverse());
+      const ordered = decryptedMessages.reverse();
+      setMessages(ordered);
+      // Подтверждение доставки/прочтения при открытии чата — тогда у отправителя появятся две галочки
+      if (user?.id && socket?.isConnected?.()) {
+        ordered.forEach((msg) => {
+          if (msg.userId !== user.id) {
+            socket.markAsDelivered(msg.id);
+            socket.markAsRead(msg.id);
+          }
+        });
+      }
     } catch (error) {
       console.error('Ошибка загрузки сообщений:', error);
     } finally {
@@ -157,8 +172,8 @@ export const ChatPage = () => {
       const chatRes = await api.get(`/chats/${chatId}`);
       const otherMember = chatRes.data.members?.find((m: any) => m.userId !== user.id);
       if (otherMember) {
-        await encryptionService.initializeChatEncryption(chatId, otherMember.userId);
-        setUseEncryption(true);
+        const ok = await encryptionService.initializeChatEncryption(chatId, otherMember.userId);
+        setUseEncryption(!!ok);
       }
     } catch {
       // Шифрование недоступно (например, по HTTP нет crypto.subtle) — работаем без E2EE
@@ -308,7 +323,7 @@ export const ChatPage = () => {
 
   if (loading && !chat) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#0b0b0b]">
+      <div className="flex items-center justify-center h-full min-h-0 bg-[#0b0b0b]">
         <div className="text-[#86868a]">Загрузка...</div>
       </div>
     );
@@ -330,9 +345,9 @@ export const ChatPage = () => {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-[#0b0b0b] text-white">
-      {/* Шапка чата: назад, контакт, звонки */}
-      <header className="flex-none flex items-center gap-3 px-4 py-3 border-b border-white/10 bg-[#141414]">
+    <div className="h-full min-h-0 flex flex-col bg-[#0b0b0b] text-white">
+      {/* Шапка чата: назад, контакт, звонки — всегда видна */}
+      <header className="flex-none flex items-center gap-3 px-4 py-3 border-b border-white/10 bg-[#141414] shrink-0">
         <button
           onClick={() => navigate('/')}
           className="p-2 -ml-2 rounded-full hover:bg-white/10 text-[#86868a] hover:text-white"
@@ -416,7 +431,7 @@ export const ChatPage = () => {
       </header>
 
       {/* Сообщения */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 space-y-3">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-32 text-[#86868a] text-sm">
             <p>Пока нет сообщений.</p>
@@ -433,7 +448,7 @@ export const ChatPage = () => {
           return (
             <div
               key={message.id}
-              className={`flex ${isOwn ? 'justify-end' : 'justify-start'} ${selectionMode && canSelect ? 'cursor-pointer' : ''}`}
+              className={`flex min-w-0 max-w-full ${isOwn ? 'justify-end' : 'justify-start'} ${selectionMode && canSelect ? 'cursor-pointer' : ''}`}
               onClick={
                 selectionMode && canSelect
                   ? () => toggleSelectMessage(message.id)
@@ -441,7 +456,7 @@ export const ChatPage = () => {
               }
             >
               <div
-                className={`max-w-[75%] sm:max-w-md px-4 py-2.5 rounded-2xl flex items-start gap-2 ${
+                className={`max-w-[85%] sm:max-w-md min-w-0 overflow-hidden px-4 py-2.5 rounded-2xl flex items-start gap-2 ${
                   isOwn
                     ? 'bg-[#0a84ff] text-white rounded-br-md'
                     : 'bg-[#2d2d2f] text-white rounded-bl-md'
@@ -458,10 +473,10 @@ export const ChatPage = () => {
                     )}
                   </span>
                 )}
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 overflow-hidden">
                   {isVoice && audioUrl ? (
-                    <div onClick={selectionMode ? (e) => e.stopPropagation() : undefined}>
-                      <audio controls className="w-full max-w-[220px] h-9">
+                    <div className="chat-audio-wrap" onClick={selectionMode ? (e) => e.stopPropagation() : undefined}>
+                      <audio controls preload="metadata">
                         <source src={audioUrl} type="audio/webm" />
                         <source src={audioUrl} type="audio/mpeg" />
                       </audio>
