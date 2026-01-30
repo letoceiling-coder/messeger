@@ -50,6 +50,8 @@ export const VideoCall = ({
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [logLines, setLogLines] = useState<string[]>([]);
   const [, setDiagnosticsTick] = useState(0);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const originalCameraTrackRef = useRef<MediaStreamTrack | null>(null);
   const callDurationRef = useRef(0);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -175,6 +177,10 @@ export const VideoCall = ({
     }, 28000);
 
     return () => {
+      // Остановить screen sharing при завершении звонка
+      if (isScreenSharing) {
+        setIsScreenSharing(false);
+      }
       if (timeout) clearTimeout(timeout);
       if (isIncomingWaiting && !acceptedOrConnectedRef.current) {
         webrtc.rejectCall(chatId);
@@ -343,6 +349,87 @@ export const VideoCall = ({
     if (webrtcServiceRef.current) {
       webrtcServiceRef.current.toggleAudio();
       setIsAudioEnabled(!isAudioEnabled);
+    }
+  };
+
+  const handleToggleScreenShare = async () => {
+    if (!videoMode) return; // Screen sharing only in video mode
+    
+    if (isScreenSharing) {
+      // Остановить демонстрацию экрана и вернуть камеру
+      await stopScreenShare();
+    } else {
+      // Начать демонстрацию экрана
+      await startScreenShare();
+    }
+  };
+
+  const startScreenShare = async () => {
+    try {
+      if (!webrtcServiceRef.current || !localStream) {
+        throw new Error('WebRTC service or local stream not available');
+      }
+
+      // Получить поток экрана
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          cursor: 'always',
+        } as MediaTrackConstraints,
+        audio: false,
+      });
+
+      const screenTrack = screenStream.getVideoTracks()[0];
+      if (!screenTrack) {
+        throw new Error('No screen video track available');
+      }
+
+      // Сохранить оригинальный трек камеры
+      const cameraTrack = localStream.getVideoTracks()[0];
+      if (cameraTrack) {
+        originalCameraTrackRef.current = cameraTrack;
+      }
+
+      // Заменить видеотрек на трек экрана
+      await webrtcServiceRef.current.replaceVideoTrack(screenTrack);
+      setIsScreenSharing(true);
+      webrtcLogService.add('Screen sharing started');
+
+      // Обработать остановку через браузер
+      screenTrack.onended = () => {
+        stopScreenShare().catch(console.error);
+      };
+    } catch (error) {
+      console.error('Error starting screen share:', error);
+      webrtcLogService.add(`Screen share error: ${error}`);
+    }
+  };
+
+  const stopScreenShare = async () => {
+    try {
+      if (!webrtcServiceRef.current || !originalCameraTrackRef.current) {
+        setIsScreenSharing(false);
+        return;
+      }
+
+      // Получить новый поток с камеры
+      const cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      });
+
+      const newCameraTrack = cameraStream.getVideoTracks()[0];
+      if (!newCameraTrack) {
+        throw new Error('Failed to get camera track');
+      }
+
+      // Заменить трек экрана обратно на камеру
+      await webrtcServiceRef.current.replaceVideoTrack(newCameraTrack);
+      setIsScreenSharing(false);
+      originalCameraTrackRef.current = null;
+      webrtcLogService.add('Screen sharing stopped, camera restored');
+    } catch (error) {
+      console.error('Error stopping screen share:', error);
+      webrtcLogService.add(`Stop screen share error: ${error}`);
+      setIsScreenSharing(false);
     }
   };
 
@@ -532,8 +619,18 @@ export const VideoCall = ({
           className="w-full h-full object-cover"
         />
         {localStream && !connectionError && !noAnswer && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/60 text-white font-mono text-lg px-4 py-2 rounded-lg tabular-nums" aria-label="Длительность разговора">
-            {formatDuration(callDurationSeconds)}
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+            <div className="bg-black/60 text-white font-mono text-lg px-4 py-2 rounded-lg tabular-nums" aria-label="Длительность разговора">
+              {formatDuration(callDurationSeconds)}
+            </div>
+            {isScreenSharing && (
+              <div className="bg-blue-600/90 text-white text-sm px-4 py-2 rounded-lg flex items-center gap-2 animate-pulse">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z" />
+                </svg>
+                <span>Демонстрация экрана активна</span>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -542,13 +639,26 @@ export const VideoCall = ({
         <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
       </div>
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-4 items-center">
-        <button onClick={handleToggleVideo} className={`p-4 rounded-full ${isVideoEnabled ? 'bg-gray-700' : 'bg-red-600'} text-white hover:bg-gray-600`}>
+        <button onClick={handleToggleVideo} className={`p-4 rounded-full ${isVideoEnabled ? 'bg-gray-700' : 'bg-red-600'} text-white hover:bg-gray-600`} title={isVideoEnabled ? 'Выключить камеру' : 'Включить камеру'}>
           {isVideoEnabled ? '📹' : '📵'}
         </button>
-        <button onClick={handleToggleAudio} className={`p-4 rounded-full ${isAudioEnabled ? 'bg-gray-700' : 'bg-red-600'} text-white hover:bg-gray-600`}>
+        <button onClick={handleToggleAudio} className={`p-4 rounded-full ${isAudioEnabled ? 'bg-gray-700' : 'bg-red-600'} text-white hover:bg-gray-600`} title={isAudioEnabled ? 'Выключить микрофон' : 'Включить микрофон'}>
           {isAudioEnabled ? '🎤' : '🔇'}
         </button>
-        <button onClick={handleEndCall} className="p-4 rounded-full bg-red-600 text-white hover:bg-red-700">📞</button>
+        <button 
+          onClick={handleToggleScreenShare} 
+          className={`p-4 rounded-full ${isScreenSharing ? 'bg-blue-600 ring-2 ring-blue-400' : 'bg-gray-700'} text-white hover:opacity-90 transition-all`}
+          title={isScreenSharing ? 'Остановить демонстрацию экрана' : 'Показать экран'}
+        >
+          <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+            {isScreenSharing ? (
+              <path d="M21 3H3c-1.11 0-2 .89-2 2v12c0 1.1.89 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.11-.9-2-2-2zm0 14H3V5h18v12zm-10-7h2v6h2l-3 3-3-3h2v-6z" />
+            ) : (
+              <path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z" />
+            )}
+          </svg>
+        </button>
+        <button onClick={handleEndCall} className="p-4 rounded-full bg-red-600 text-white hover:bg-red-700" title="Завершить звонок">📞</button>
         <button
           type="button"
           onClick={() => setShowLogs((v) => !v)}

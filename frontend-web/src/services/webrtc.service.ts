@@ -463,6 +463,31 @@ export class WebRTCService {
     }
   }
 
+  /** Заменить текущий видеотрек на новый (для screen sharing) */
+  async replaceVideoTrack(newVideoTrack: MediaStreamTrack): Promise<void> {
+    if (!this.peerConnection || !this.localStream) {
+      throw new Error('Peer connection or local stream not initialized');
+    }
+
+    // Найти sender видеотрека в peer connection
+    const sender = this.peerConnection.getSenders().find((s) => s.track?.kind === 'video');
+    if (!sender) {
+      throw new Error('Video sender not found');
+    }
+
+    // Заменить трек в peer connection
+    await sender.replaceTrack(newVideoTrack);
+    webrtcLogService.add('Video track replaced successfully');
+
+    // Обновить локальный поток
+    const oldVideoTrack = this.localStream.getVideoTracks()[0];
+    if (oldVideoTrack) {
+      this.localStream.removeTrack(oldVideoTrack);
+      oldVideoTrack.stop();
+    }
+    this.localStream.addTrack(newVideoTrack);
+  }
+
   getLocalStream(): MediaStream | null {
     return this.localStream;
   }
