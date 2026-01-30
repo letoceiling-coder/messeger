@@ -161,7 +161,14 @@ export const VideoCall = ({
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
     }
-  }, [localStream]);
+    // Дополнительная попытка play() для remote video/audio когда localStream установлен (звонок активен)
+    if (localStream && remoteStream) {
+      setTimeout(() => {
+        if (remoteVideoRef.current) remoteVideoRef.current.play().catch(() => {});
+        if (remoteAudioRef.current) remoteAudioRef.current.play().catch(() => {});
+      }, 500);
+    }
+  }, [localStream, remoteStream]);
 
   useEffect(() => {
     if (!remoteVideoRef.current || !remoteStream) return;
@@ -194,9 +201,21 @@ export const VideoCall = ({
   // Удалённый звук: в видеорежиме на мобильных <video> часто не даёт звук — используем отдельный <audio>
   useEffect(() => {
     if (!remoteAudioRef.current || !remoteStream) return;
-    remoteAudioRef.current.srcObject = remoteStream;
-    const p = remoteAudioRef.current.play();
-    if (p && typeof p.catch === 'function') p.catch(() => {});
+    const el = remoteAudioRef.current;
+    el.srcObject = remoteStream;
+    const play = () => el.play().catch(() => {});
+    // Несколько попыток play() для обхода autoplay политики браузера на ПК
+    play();
+    const t1 = setTimeout(play, 300);
+    const t2 = setTimeout(play, 800);
+    const t3 = setTimeout(play, 1500);
+    const t4 = setTimeout(play, 2500);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
+    };
   }, [remoteStream]);
 
   const callStartTimeRef = useRef<number | null>(null);
