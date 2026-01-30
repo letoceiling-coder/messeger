@@ -870,7 +870,6 @@ export const ChatPage = () => {
           </div>
         )}
         <div className="flex flex-wrap items-end gap-2 min-h-0 w-full">
-          <VoiceRecorder chatId={chatId || ''} onSent={() => loadMessages()} />
           <MessageInputBar
             value={newMessage}
             onChange={setNewMessage}
@@ -880,7 +879,11 @@ export const ChatPage = () => {
             placeholder="Сообщение"
             isSending={isSending}
             hasAttachments={selectedMedia.length > 0}
-            renderMic={null}
+            renderMic={
+              !(newMessage.trim() || selectedMedia.length > 0) ? (
+                <VoiceRecorder chatId={chatId || ''} onSent={() => loadMessages()} />
+              ) : null
+            }
           />
         </div>
       </div>

@@ -54,12 +54,11 @@ export const MessageInputBar = ({
     onSubmit();
   };
 
+  const showSendButton = canSend;
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-2 min-h-0 w-full">
       <div className="flex items-end gap-2 min-h-0 w-full">
-        {renderMic != null && (
-          <div className="shrink-0 self-center pb-1">{renderMic}</div>
-        )}
         <button
           type="button"
           onClick={onEmojiClick}
@@ -98,24 +97,28 @@ export const MessageInputBar = ({
             <path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z" />
           </svg>
         </button>
-        <button
-          type="submit"
-          disabled={!canSend}
-          className="shrink-0 p-2.5 rounded-full bg-[#0a84ff] hover:bg-[#409cff] disabled:opacity-50 disabled:cursor-not-allowed self-center pb-1 text-white"
-          title="Отправить"
-          aria-label="Отправить"
-        >
-          {isSending ? (
-            <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden>
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-            </svg>
-          ) : (
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-            </svg>
-          )}
-        </button>
+        {showSendButton ? (
+          <button
+            type="submit"
+            disabled={!canSend}
+            className="shrink-0 p-2.5 rounded-full bg-[#0a84ff] hover:bg-[#409cff] disabled:opacity-50 disabled:cursor-not-allowed self-center pb-1 text-white"
+            title="Отправить"
+            aria-label="Отправить"
+          >
+            {isSending ? (
+              <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden>
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+              </svg>
+            )}
+          </button>
+        ) : renderMic != null ? (
+          <div className="shrink-0 self-center pb-1">{renderMic}</div>
+        ) : null}
       </div>
     </form>
   );
