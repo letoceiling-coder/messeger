@@ -135,12 +135,30 @@ export const VideoCall = ({
 
   useEffect(() => {
     if (!remoteVideoRef.current || !remoteStream) return;
-    remoteVideoRef.current.srcObject = remoteStream;
-    // На мобильных (Android) воспроизведение может начаться с задержкой — пробуем play несколько раз
-    const play = () => remoteVideoRef.current?.play().catch(() => {});
+    const el = remoteVideoRef.current;
+    el.srcObject = remoteStream;
+    const hasVideo = remoteStream.getVideoTracks().length > 0;
+    const play = () => el.play().catch(() => {});
     play();
-    const t = setTimeout(play, 300);
-    return () => clearTimeout(t);
+    const t1 = setTimeout(play, 300);
+    const t2 = setTimeout(play, 800);
+    const t3 = setTimeout(play, 1500);
+    // На мобильных (ответчик) видео часто появляется с задержкой — несколько попыток play
+    const t4 = hasVideo ? setTimeout(play, 2500) : null;
+    const t5 = hasVideo ? setTimeout(play, 4000) : null;
+    const interval = hasVideo ? setInterval(play, 500) : null;
+    const stopInterval = hasVideo ? setTimeout(() => { if (interval) clearInterval(interval); }, 5000) : null;
+    const onAddTrack = () => {
+      play();
+      if (remoteStream?.getVideoTracks().length) play();
+    };
+    remoteStream.onaddtrack = onAddTrack;
+    return () => {
+      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
+      if (t4) clearTimeout(t4); if (t5) clearTimeout(t5);
+      if (interval) clearInterval(interval); if (stopInterval) clearTimeout(stopInterval);
+      remoteStream.onaddtrack = null;
+    };
   }, [remoteStream]);
 
   // Голосовой звонок: воспроизведение удалённого аудио (элемент <audio> в блоке ниже)
@@ -354,7 +372,14 @@ export const VideoCall = ({
             )}
           </div>
         )}
-        <video ref={remoteVideoRef} autoPlay playsInline muted={false} className="w-full h-full object-cover" />
+        <video
+          ref={remoteVideoRef}
+          key={remoteStream ? remoteStream.getTracks().map((t) => t.id).join(',') || 'remote' : 'remote'}
+          autoPlay
+          playsInline
+          muted={false}
+          className="w-full h-full object-cover"
+        />
         {localStream && !connectionError && !noAnswer && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/60 text-white font-mono text-lg px-4 py-2 rounded-lg tabular-nums" aria-label="Длительность разговора">
             {formatDuration(callDurationSeconds)}

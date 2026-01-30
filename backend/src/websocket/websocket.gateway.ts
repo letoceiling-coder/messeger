@@ -606,13 +606,16 @@ export class MessagerWebSocketGateway
         return;
       }
 
-      // Отправка answer инициатору
+      // Отправка answer инициатору (звонящему)
       const callerSocketId = this.connectedUsers.get(callInfo.callerId);
       if (callerSocketId) {
         this.server.to(callerSocketId).emit('call:answer', {
           chatId: dto.chatId,
           answer: dto.answer,
         });
+        this.logger.log(`Call answer sent to caller socket ${callerSocketId} chatId=${dto.chatId}`);
+      } else {
+        this.logger.warn(`Call answer: caller socket not found (callerId=${callInfo.callerId}) chatId=${dto.chatId}`);
       }
 
       this.logger.log(`Call answered: ${dto.chatId}`);

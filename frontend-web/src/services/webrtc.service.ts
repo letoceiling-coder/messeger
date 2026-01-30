@@ -65,20 +65,27 @@ export class WebRTCService {
 
   private setupWebSocketListeners() {
     this.socket.on('call:answer', async (data: { chatId: string; answer: RTCSessionDescriptionInit }) => {
-      if (this.peerConnection && data.chatId === this.chatId) {
+      webrtcLogService.add('event call:answer chatId=' + String(data?.chatId) + ' myChatId=' + String(this.chatId));
+      const chatMatch = data?.chatId != null && this.chatId != null && String(data.chatId) === String(this.chatId);
+      if (this.peerConnection && chatMatch) {
         try {
-          webrtcLogService.add('received call:answer');
+          webrtcLogService.add('received call:answer, setting remote description');
           await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
           await this.drainIceQueue();
+          webrtcLogService.add('setRemoteDescription (caller) ok');
         } catch (e) {
+          webrtcLogService.warn('setRemoteDescription (answer) error', String(e));
           console.error('[WebRTC] setRemoteDescription (answer) error:', e);
         }
+      } else if (!chatMatch) {
+        webrtcLogService.add('call:answer chatId mismatch, skip');
       }
     });
 
     this.socket.on('call:ice-candidate', (data: { chatId: string; candidate: RTCIceCandidateInit }) => {
-      if (data.chatId === this.chatId) {
-        if (typeof console?.log === 'function') console.log('[WebRTC] received ICE candidate');
+      const match = data?.chatId != null && this.chatId != null && String(data.chatId) === String(this.chatId);
+      if (match) {
+        webrtcLogService.add('received ICE candidate (remote)');
         this.addIceCandidateSafe(data.candidate);
       }
     });
@@ -153,7 +160,7 @@ export class WebRTCService {
 
       this.peerConnection.oniceconnectionstatechange = () => {
         const ice = this.peerConnection?.iceConnectionState;
-        webrtcLogService.add('iceConnectionState: ' + ice);
+        webrtcLogService.add('iceConnectionState (caller): ' + ice);
         if (ice === 'failed') {
           webrtcLogService.warn('ICE failed (на мобильных часто нужен TURN)');
           this.onConnectionFailedCallback?.();
@@ -161,7 +168,7 @@ export class WebRTCService {
       };
 
       this.peerConnection.ontrack = (event) => {
-        webrtcLogService.add('ontrack: ' + (event.track?.kind ?? '') + ' streams=' + (event.streams?.length ?? 0));
+        webrtcLogService.add('ontrack (caller): ' + (event.track?.kind ?? '') + ' streams=' + (event.streams?.length ?? 0));
         const stream = event.streams?.[0] || (event.track ? new MediaStream([event.track]) : null);
         if (!stream) return;
         if (!this.remoteStream) {
