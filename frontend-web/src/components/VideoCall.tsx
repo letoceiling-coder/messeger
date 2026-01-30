@@ -46,7 +46,9 @@ export const VideoCall = ({
   const [noAnswer, setNoAnswer] = useState(false);
   const [callDurationSeconds, setCallDurationSeconds] = useState(0);
   const [showLogs, setShowLogs] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [logLines, setLogLines] = useState<string[]>([]);
+  const [, setDiagnosticsTick] = useState(0);
   const callDurationRef = useRef(0);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -222,6 +224,20 @@ export const VideoCall = ({
     return unsub;
   }, [showLogs]);
 
+  const formatTrackInfo = (stream: MediaStream | null) => {
+    if (!stream) return '—';
+    return stream.getTracks().map((t) => `${t.kind} ${t.enabled ? 'on' : 'off'} ${t.muted ? 'muted' : ''} ${t.readyState}`).join(', ') || 'нет треков';
+  };
+
+  const refreshDiagnostics = () => setDiagnosticsTick((n) => n + 1);
+  const connectionInfo = webrtcServiceRef.current?.getConnectionInfo() ?? null;
+
+  const handleForcePlay = () => {
+    remoteVideoRef.current?.play().catch(() => {});
+    remoteAudioRef.current?.play().catch(() => {});
+    webrtcLogService.add('Force play (remote video/audio)');
+  };
+
   const handleCopyLogs = () => {
     const text = webrtcLogService.getLogs().join('\n');
     navigator.clipboard?.writeText(text).then(() => alert('Логи скопированы')).catch(() => alert('Не удалось скопировать'));
@@ -352,7 +368,28 @@ export const VideoCall = ({
           <button type="button" onClick={() => setShowLogs((v) => !v)} className="p-3 rounded-full bg-[#2d2d2f] text-white text-xs">
             📋 Логи
           </button>
+          <button type="button" onClick={() => { setShowDiagnostics((v) => !v); if (!showDiagnostics) refreshDiagnostics(); }} className="p-3 rounded-full bg-[#2d2d2f] text-white text-xs">
+            📊 Потоки
+          </button>
+          <button type="button" onClick={handleForcePlay} className="p-3 rounded-full bg-[#2d2d2f] text-white text-xs" title="Принудительно play удалённый звук">
+            ▶ Play
+          </button>
         </div>
+        {showDiagnostics && (
+          <div className="absolute inset-x-0 bottom-32 left-0 right-0 bg-black/90 text-green-400 p-4 max-h-[40vh] overflow-auto flex flex-col gap-2 z-[60] text-xs font-mono">
+            <div className="flex justify-between items-center">
+              <span className="text-white font-medium">Диагностика потоков</span>
+              <div className="flex gap-2">
+                <button type="button" onClick={refreshDiagnostics} className="px-2 py-1 rounded bg-gray-600 text-white">Обновить</button>
+                <button type="button" onClick={() => setShowDiagnostics(false)} className="px-2 py-1 rounded bg-gray-600 text-white">Закрыть</button>
+              </div>
+            </div>
+            <div><span className="text-gray-400">Соединение:</span> {connectionInfo ? `${connectionInfo.connectionState} / ICE: ${connectionInfo.iceConnectionState}` : '—'}</div>
+            <div><span className="text-gray-400">Локальный поток:</span> {formatTrackInfo(localStream)}</div>
+            <div><span className="text-gray-400">Удалённый поток:</span> {formatTrackInfo(remoteStream)}</div>
+            <div><span className="text-gray-400">Удалённый звук (audio):</span> {remoteAudioRef.current ? (remoteAudioRef.current.srcObject ? 'srcObject есть' : 'srcObject нет') : '—'}</div>
+          </div>
+        )}
         {showLogs && (
           <div className="absolute inset-x-0 bottom-0 top-1/3 bg-black/95 text-green-400 p-4 flex flex-col z-[60]">
             <div className="flex justify-between items-center mb-2">
@@ -434,11 +471,43 @@ export const VideoCall = ({
           type="button"
           onClick={() => setShowLogs((v) => !v)}
           className="p-3 rounded-full bg-gray-700/80 text-white text-sm"
-          title="Логи звонка (для диагностики на телефоне)"
+          title="Логи звонка"
         >
           📋 Логи
         </button>
+        <button
+          type="button"
+          onClick={() => { setShowDiagnostics((v) => !v); if (!showDiagnostics) refreshDiagnostics(); }}
+          className="p-3 rounded-full bg-gray-700/80 text-white text-sm"
+          title="Потоки и состояние соединения"
+        >
+          📊 Потоки
+        </button>
+        <button
+          type="button"
+          onClick={handleForcePlay}
+          className="p-3 rounded-full bg-gray-700/80 text-white text-sm"
+          title="Принудительно воспроизвести удалённое видео/звук"
+        >
+          ▶ Play
+        </button>
       </div>
+      {showDiagnostics && (
+        <div className="absolute inset-x-0 bottom-24 left-0 right-0 bg-black/90 text-green-400 p-4 max-h-[50vh] overflow-auto flex flex-col gap-2 z-[55] text-sm font-mono">
+          <div className="flex justify-between items-center">
+            <span className="text-white font-medium">Диагностика потоков</span>
+            <div className="flex gap-2">
+              <button type="button" onClick={refreshDiagnostics} className="px-2 py-1 rounded bg-gray-600 text-white text-xs">Обновить</button>
+              <button type="button" onClick={() => setShowDiagnostics(false)} className="px-2 py-1 rounded bg-gray-600 text-white text-xs">Закрыть</button>
+            </div>
+          </div>
+          <div><span className="text-gray-400">Соединение:</span> {connectionInfo ? `${connectionInfo.connectionState} / ICE: ${connectionInfo.iceConnectionState}` : '—'}</div>
+          <div><span className="text-gray-400">Локальный поток:</span> {formatTrackInfo(localStream)}</div>
+          <div><span className="text-gray-400">Удалённый поток:</span> {formatTrackInfo(remoteStream)}</div>
+          <div><span className="text-gray-400">Удалённое видео:</span> {remoteVideoRef.current ? (remoteVideoRef.current.srcObject ? 'srcObject есть' : 'srcObject нет') : '—'}</div>
+          <div><span className="text-gray-400">Удалённый звук:</span> {remoteAudioRef.current ? (remoteAudioRef.current.srcObject ? 'srcObject есть' : 'srcObject нет') : '—'}</div>
+        </div>
+      )}
       {showLogs && (
         <div className="absolute inset-0 top-auto bg-black/95 text-green-400 p-4 max-h-[60vh] flex flex-col z-[60]">
           <div className="flex justify-between items-center mb-2">

@@ -20,13 +20,6 @@ function getIceServers(): RTCIceServer[] {
   return servers;
 }
 
-function isMobileCaller(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  const ua = navigator.userAgent || '';
-  const narrow = typeof window !== 'undefined' && window.innerWidth < 768;
-  return narrow || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
-}
-
 export class WebRTCService {
   private peerConnection: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
@@ -156,15 +149,11 @@ export class WebRTCService {
           : false,
       });
 
-      const iceServers = getIceServers();
-      const hasTurn = iceServers.some((s) => s.urls && String(s.urls).includes('turn:'));
-      const useRelayOnMobile = isMobileCaller() && hasTurn;
+      // TURN в списке, но без принудительного relay — иначе при недоступном TURN соединение всегда падает
       this.peerConnection = new RTCPeerConnection({
-        iceServers,
+        iceServers: getIceServers(),
         iceCandidatePoolSize: 10,
-        ...(useRelayOnMobile ? { iceTransportPolicy: 'relay' as RTCIceTransportPolicy } : {}),
       });
-      if (useRelayOnMobile) webrtcLogService.add('ICE policy: relay (TURN only, mobile caller)');
 
       this.localStream.getTracks().forEach((track) => {
         this.peerConnection!.addTrack(track, this.localStream!);
@@ -258,15 +247,10 @@ export class WebRTCService {
         });
       }
 
-      const iceServersAnswerer = getIceServers();
-      const hasTurnAnswerer = iceServersAnswerer.some((s) => s.urls && String(s.urls).includes('turn:'));
-      const useRelayAnswerer = isMobileCaller() && hasTurnAnswerer;
       this.peerConnection = new RTCPeerConnection({
-        iceServers: iceServersAnswerer,
+        iceServers: getIceServers(),
         iceCandidatePoolSize: 10,
-        ...(useRelayAnswerer ? { iceTransportPolicy: 'relay' as RTCIceTransportPolicy } : {}),
       });
-      if (useRelayAnswerer) webrtcLogService.add('ICE policy (answerer): relay (TURN only, mobile)');
 
       this.peerConnection.ontrack = (event) => {
         webrtcLogService.add('ontrack (answerer): ' + (event.track?.kind ?? ''));
@@ -410,6 +394,15 @@ export class WebRTCService {
 
   getRemoteStream(): MediaStream | null {
     return this.remoteStream;
+  }
+
+  /** Состояние соединения для диагностики во время звонка */
+  getConnectionInfo(): { connectionState?: string; iceConnectionState?: string } | null {
+    if (!this.peerConnection) return null;
+    return {
+      connectionState: this.peerConnection.connectionState,
+      iceConnectionState: this.peerConnection.iceConnectionState,
+    };
   }
 
   onRemoteStream(callback: (stream: MediaStream) => void) {
