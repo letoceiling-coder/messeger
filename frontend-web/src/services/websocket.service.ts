@@ -7,36 +7,95 @@ const WS_URL = import.meta.env.DEV
   ? (rawWs || 'http://localhost:3000')
   : (rawWs && (String(rawWs).startsWith('wss://') || String(rawWs).startsWith('https://')) ? rawWs : '');
 
+export type ConnectionStatus = 'connected' | 'disconnected' | 'reconnecting';
+
 class WebSocketService {
   private socket: Socket | null = null;
+  private token: string | null = null;
+  private intentionalDisconnect = false;
+  private reconnectAttempts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private statusListeners: ((status: ConnectionStatus) => void)[] = [];
+
+  private setStatus(status: ConnectionStatus) {
+    this.statusListeners.forEach((cb) => cb(status));
+  }
+
+  onStatusChange(callback: (status: ConnectionStatus) => void): () => void {
+    this.statusListeners.push(callback);
+    callback(this.socket?.connected ? 'connected' : 'disconnected');
+    return () => {
+      this.statusListeners = this.statusListeners.filter((c) => c !== callback);
+    };
+  }
+
+  getStatus(): ConnectionStatus {
+    if (this.socket?.connected) return 'connected';
+    if (this.reconnectTimer != null) return 'reconnecting';
+    return 'disconnected';
+  }
 
   connect(token: string): Socket {
     if (this.socket?.connected) {
       return this.socket;
     }
 
+    this.intentionalDisconnect = false;
+    this.token = token;
+
     this.socket = io(WS_URL, {
-      auth: {
-        token,
-      },
-      transports: ['websocket'],
+      auth: { token },
+      transports: ['websocket', 'polling'],
+      reconnection: false,
+    });
+
+    this.socket.on('connect', () => {
+      this.reconnectAttempts = 0;
+      this.setStatus('connected');
+    });
+
+    this.socket.on('disconnect', () => {
+      const wasIntentional = this.intentionalDisconnect;
+      this.socket = null;
+      this.setStatus('disconnected');
+      if (wasIntentional || !this.token) return;
+      // Автопереподключение при обрыве (сеть, перезапуск сервера)
+      const delay = Math.min(2000 * Math.pow(1.5, this.reconnectAttempts), 15000);
+      this.reconnectAttempts++;
+      this.setStatus('reconnecting');
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
+        if (this.token) this.connect(this.token);
+      }, delay);
+    });
+
+    this.socket.on('connect_error', () => {
+      this.setStatus('disconnected');
     });
 
     return this.socket;
   }
 
   disconnect() {
+    this.intentionalDisconnect = true;
+    this.token = null;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
     }
+    this.setStatus('disconnected');
   }
 
   async sendMessage(chatId: string, content: string, useEncryption: boolean = false) {
     if (!this.socket?.connected) {
-      throw new Error('WebSocket не подключен');
+      throw new Error('Нет соединения с сервером. Проверьте интернет и обновите страницу.');
     }
 
+    // При отсутствии ключа у собеседника или ошибке шифрования — всегда отправляем без шифрования
     if (useEncryption) {
       try {
         const { encryptionService } = await import('./encryption.service');
@@ -52,7 +111,7 @@ class WebSocketService {
           return;
         }
       } catch {
-        // Шифрование недоступно (например, по HTTP) — отправляем без шифрования
+        // Шифрование недоступно — отправляем без шифрования, сообщение всегда доходит
       }
     }
 

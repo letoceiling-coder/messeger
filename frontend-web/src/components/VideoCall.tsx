@@ -27,6 +27,7 @@ export const VideoCall = ({
   const [isVideoEnabled, setIsVideoEnabled] = useState(videoMode);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isConnecting, setIsConnecting] = useState(true);
+  const [connectionError, setConnectionError] = useState(false);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const webrtcServiceRef = useRef<WebRTCService | null>(null);
@@ -39,10 +40,16 @@ export const VideoCall = ({
     webrtc.onRemoteStream((stream) => {
       setRemoteStream(stream);
       setIsConnecting(false);
+      setConnectionError(false);
     });
 
     webrtc.onCallEnd(() => {
       onEnd();
+    });
+
+    webrtc.onConnectionFailed(() => {
+      setIsConnecting(false);
+      setConnectionError(true);
     });
 
     const initializeCall = async () => {
@@ -65,7 +72,15 @@ export const VideoCall = ({
 
     initializeCall();
 
+    const timeout = setTimeout(() => {
+      setIsConnecting((prev) => {
+        if (prev) setConnectionError(true);
+        return false;
+      });
+    }, 28000);
+
     return () => {
+      clearTimeout(timeout);
       webrtc.endCall();
     };
   }, [chatId, isIncoming, offer, socket, videoMode, onEnd]);
@@ -154,8 +169,21 @@ export const VideoCall = ({
         </div>
         <p className="text-white font-medium text-lg">{contactName}</p>
         <p className="text-[#86868a] text-sm mt-1">
-          {isConnecting ? 'Подключение...' : 'Голосовой звонок'}
+          {connectionError ? 'Не удалось подключиться' : isConnecting ? 'Подключение...' : 'Голосовой звонок'}
         </p>
+        {connectionError && (
+          <p className="text-[#86868a] text-xs mt-2 max-w-xs text-center">
+            Собеседник не ответил или проблема с сетью. Попробуйте позже.
+          </p>
+        )}
+        {connectionError && (
+          <button
+            onClick={onEnd}
+            className="mt-4 px-6 py-2 rounded-xl bg-[#2d2d2f] text-white hover:bg-[#3d3d3f]"
+          >
+            Закрыть
+          </button>
+        )}
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 flex gap-4">
           <button
             onClick={handleToggleAudio}
@@ -183,9 +211,24 @@ export const VideoCall = ({
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
       <div className="flex-1 relative">
-        {isConnecting && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
-            <div className="text-white">Подключение...</div>
+        {(isConnecting || connectionError) && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 gap-4">
+            <div className="text-white">
+              {connectionError ? 'Не удалось подключиться' : 'Подключение...'}
+            </div>
+            {connectionError && (
+              <p className="text-gray-400 text-sm text-center max-w-xs">
+                Не удалось установить связь. Возможные причины: собеседник не ответил, проблемы с сетью или файрволом. Обновите страницу и попробуйте снова.
+              </p>
+            )}
+            {connectionError && (
+              <button
+                onClick={onEnd}
+                className="px-6 py-2 rounded-xl bg-red-600 text-white hover:bg-red-500"
+              >
+                Закрыть
+              </button>
+            )}
           </div>
         )}
         <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />

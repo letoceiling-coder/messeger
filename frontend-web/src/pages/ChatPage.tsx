@@ -104,16 +104,22 @@ export const ChatPage = () => {
       );
     };
 
+    const handleSocketError = (data: { message?: string }) => {
+      if (data?.message) alert('Ошибка: ' + data.message);
+    };
+
     socket.onMessageReceived(handleMessageReceived);
     socket.on('call:offer', handleCallOffer);
     socket.onDeliveryStatus(handleDeliveryStatus);
+    socket.on('error', handleSocketError);
 
     return () => {
       socket.offMessageReceived(handleMessageReceived);
       socket.off('call:offer', handleCallOffer);
       socket.offDeliveryStatus(handleDeliveryStatus);
+      socket.off('error', handleSocketError);
     };
-  }, [chatId, socket, navigate, user?.id]);
+  }, [chatId, socket, navigate, user?.id, connectionStatus]);
 
   useEffect(() => {
     scrollToBottom();
@@ -208,10 +214,10 @@ export const ChatPage = () => {
     try {
       await socket.sendMessage(chatId, text, useEncryption);
     } catch (err: any) {
-      console.error('Ошибка отправки:', err);
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       lastTempMessageIdRef.current = null;
-      alert(err?.message || 'Не удалось отправить сообщение');
+      const msg = err?.message || err?.response?.data?.message || 'Не удалось отправить сообщение.';
+      alert(msg + (msg.includes('соединен') ? '' : ' Проверьте интернет и обновите страницу.'));
     }
   };
 

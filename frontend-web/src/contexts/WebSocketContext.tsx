@@ -64,7 +64,7 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
   );
 
   return (
-    <WebSocketContext.Provider value={{ socket: websocketService, onlineStatus, isUserOnline }}>
+    <WebSocketContext.Provider value={{ socket: websocketService, onlineStatus, isUserOnline, connectionStatus }}>
       {children}
     </WebSocketContext.Provider>
   );
