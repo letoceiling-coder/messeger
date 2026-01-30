@@ -26,9 +26,10 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Не редиректить при 401 на запросе логина — показываем сообщение на странице входа
       const isLoginRequest = error.config?.url?.includes('auth/login');
-      if (!isLoginRequest) {
+      const hadToken = !!error.config?.headers?.Authorization;
+      // Сбрасываем сессию только если запрос был с токеном (пользователь считался авторизованным)
+      if (!isLoginRequest && hadToken) {
         localStorage.removeItem('accessToken');
         localStorage.removeItem('user');
         window.location.href = '/login';

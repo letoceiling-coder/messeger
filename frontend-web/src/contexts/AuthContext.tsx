@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '../types';
+import { usersService } from '../services/users.service';
 
 interface AuthContextType {
   user: User | null;
@@ -21,6 +22,16 @@ function getStoredUser(): User | null {
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(getStoredUser);
+
+  // При загрузке проверяем токен через GET /users/me; при 401 интерцептор api очистит localStorage и редирект на /login
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken');
+    if (!token) return;
+    usersService
+      .getMe()
+      .then((me) => setUser(me))
+      .catch(() => {});
+  }, []);
 
   const login = (userData: User, token: string) => {
     setUser(userData);
