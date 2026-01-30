@@ -16,6 +16,7 @@ export class WebRTCService {
   private socket: any;
   private onRemoteStreamCallback?: (stream: MediaStream) => void;
   private onCallEndCallback?: () => void;
+  private onConnectionFailedCallback?: () => void;
 
   constructor(socket: any) {
     this.socket = socket;
@@ -87,6 +88,13 @@ export class WebRTCService {
             chatId: this.chatId,
             candidate: event.candidate,
           });
+        }
+      };
+
+      this.peerConnection.onconnectionstatechange = () => {
+        const state = this.peerConnection?.connectionState;
+        if (state === 'failed' || state === 'disconnected') {
+          this.onConnectionFailedCallback?.();
         }
       };
 
@@ -235,5 +243,9 @@ export class WebRTCService {
 
   onCallEnd(callback: () => void) {
     this.onCallEndCallback = callback;
+  }
+
+  onConnectionFailed(callback: () => void) {
+    this.onConnectionFailedCallback = callback;
   }
 }
