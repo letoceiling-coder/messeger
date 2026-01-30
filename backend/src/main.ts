@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -31,8 +32,12 @@ async function bootstrap() {
   // Глобальный префикс для всех роутов
   app.setGlobalPrefix('api');
 
-  // Статические файлы для аудио
-  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+  const uploadsDir = join(__dirname, '..', 'uploads');
+  for (const sub of ['audio', 'images', 'videos']) {
+    const dir = join(uploadsDir, sub);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  }
+  app.useStaticAssets(uploadsDir, {
     prefix: '/uploads/',
   });
 

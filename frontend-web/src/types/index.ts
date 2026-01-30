@@ -44,6 +44,7 @@ export interface Message {
   content?: string;
   messageType?: string;
   audioUrl?: string;
+  mediaUrl?: string | null;
   isEncrypted?: boolean;
   encryptedContent?: string;
   encryptedKey?: string;
@@ -54,6 +55,9 @@ export interface Message {
   deliveryStatus?: MessageDeliveryStatus;
   /** С бэкенда при загрузке (messageDeliveries) */
   messageDeliveries?: { status: string; deliveredAt?: string; readAt?: string }[];
+  /** Ответ на сообщение */
+  replyToId?: string | null;
+  replyTo?: { id: string; content?: string; messageType?: string; userId: string } | null;
 }
 
 export interface AuthResponse {
