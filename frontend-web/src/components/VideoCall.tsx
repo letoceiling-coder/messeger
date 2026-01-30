@@ -161,14 +161,13 @@ export const VideoCall = ({
     };
   }, [remoteStream]);
 
-  // Голосовой звонок: воспроизведение удалённого аудио (элемент <audio> в блоке ниже)
+  // Удалённый звук: в видеорежиме на мобильных <video> часто не даёт звук — используем отдельный <audio>
   useEffect(() => {
-    if (!videoMode && remoteAudioRef.current && remoteStream) {
-      remoteAudioRef.current.srcObject = remoteStream;
-      const p = remoteAudioRef.current.play();
-      if (p && typeof p.catch === 'function') p.catch(() => {});
-    }
-  }, [videoMode, remoteStream]);
+    if (!remoteAudioRef.current || !remoteStream) return;
+    remoteAudioRef.current.srcObject = remoteStream;
+    const p = remoteAudioRef.current.play();
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  }, [remoteStream]);
 
   const callStartTimeRef = useRef<number | null>(null);
   // Таймер длительности разговора (старт при установленном соединении)
@@ -342,6 +341,7 @@ export const VideoCall = ({
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
+      <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
       <div className="flex-1 relative">
         {(isConnecting || connectionError || noAnswer) && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 gap-4">

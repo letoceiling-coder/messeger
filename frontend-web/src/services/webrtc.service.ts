@@ -20,6 +20,13 @@ function getIceServers(): RTCIceServer[] {
   return servers;
 }
 
+function isMobileCaller(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const narrow = typeof window !== 'undefined' && window.innerWidth < 768;
+  return narrow || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+}
+
 export class WebRTCService {
   private peerConnection: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
@@ -31,10 +38,25 @@ export class WebRTCService {
   private onCallEndCallback?: () => void;
   private onConnectionFailedCallback?: () => void;
   private onNoAnswerCallback?: () => void;
+  private _handlerAnswer?: (data: any) => void;
+  private _handlerIce?: (data: any) => void;
+  private _handlerEnd?: (data: any) => void;
+  private _handlerRejected?: (data: any) => void;
+  private _handlerNoAnswer?: (data: any) => void;
 
   constructor(socket: any) {
     this.socket = socket;
     this.setupWebSocketListeners();
+  }
+
+  private removeSocketListeners() {
+    if (!this.socket) return;
+    if (this._handlerAnswer) this.socket.off('call:answer', this._handlerAnswer);
+    if (this._handlerIce) this.socket.off('call:ice-candidate', this._handlerIce);
+    if (this._handlerEnd) this.socket.off('call:end', this._handlerEnd);
+    if (this._handlerRejected) this.socket.off('call:rejected', this._handlerRejected);
+    if (this._handlerNoAnswer) this.socket.off('call:no-answer', this._handlerNoAnswer);
+    this._handlerAnswer = this._handlerIce = this._handlerEnd = this._handlerRejected = this._handlerNoAnswer = undefined;
   }
 
   private async addIceCandidateSafe(candidate: RTCIceCandidateInit) {
@@ -64,7 +86,7 @@ export class WebRTCService {
   }
 
   private setupWebSocketListeners() {
-    this.socket.on('call:answer', async (data: { chatId: string; answer: RTCSessionDescriptionInit }) => {
+    this._handlerAnswer = async (data: { chatId: string; answer: RTCSessionDescriptionInit }) => {
       webrtcLogService.add('event call:answer chatId=' + String(data?.chatId) + ' myChatId=' + String(this.chatId));
       const chatMatch = data?.chatId != null && this.chatId != null && String(data.chatId) === String(this.chatId);
       if (this.peerConnection && chatMatch) {
@@ -80,34 +102,39 @@ export class WebRTCService {
       } else if (!chatMatch) {
         webrtcLogService.add('call:answer chatId mismatch, skip');
       }
-    });
+    };
+    this.socket.on('call:answer', this._handlerAnswer);
 
-    this.socket.on('call:ice-candidate', (data: { chatId: string; candidate: RTCIceCandidateInit }) => {
+    this._handlerIce = (data: { chatId: string; candidate: RTCIceCandidateInit }) => {
       const match = data?.chatId != null && this.chatId != null && String(data.chatId) === String(this.chatId);
       if (match) {
         webrtcLogService.add('received ICE candidate (remote)');
         this.addIceCandidateSafe(data.candidate);
       }
-    });
+    };
+    this.socket.on('call:ice-candidate', this._handlerIce);
 
-    this.socket.on('call:end', (data: { chatId: string }) => {
+    this._handlerEnd = (data: { chatId: string }) => {
       if (data.chatId === this.chatId) {
         this.endCall();
       }
-    });
+    };
+    this.socket.on('call:end', this._handlerEnd);
 
-    this.socket.on('call:rejected', (data: { chatId: string }) => {
+    this._handlerRejected = (data: { chatId: string }) => {
       if (data.chatId === this.chatId) {
         this.endCall();
       }
-    });
+    };
+    this.socket.on('call:rejected', this._handlerRejected);
 
-    this.socket.on('call:no-answer', (data: { chatId: string }) => {
+    this._handlerNoAnswer = (data: { chatId: string }) => {
       if (data.chatId === this.chatId) {
         this.endCall();
         this.onNoAnswerCallback?.();
       }
-    });
+    };
+    this.socket.on('call:no-answer', this._handlerNoAnswer);
   }
 
   async initiateCall(chatId: string, options?: { video?: boolean }): Promise<MediaStream> {
@@ -129,10 +156,15 @@ export class WebRTCService {
           : false,
       });
 
+      const iceServers = getIceServers();
+      const hasTurn = iceServers.some((s) => s.urls && String(s.urls).includes('turn:'));
+      const useRelayOnMobile = isMobileCaller() && hasTurn;
       this.peerConnection = new RTCPeerConnection({
-        iceServers: getIceServers(),
+        iceServers,
         iceCandidatePoolSize: 10,
+        ...(useRelayOnMobile ? { iceTransportPolicy: 'relay' as RTCIceTransportPolicy } : {}),
       });
+      if (useRelayOnMobile) webrtcLogService.add('ICE policy: relay (TURN only, mobile caller)');
 
       this.localStream.getTracks().forEach((track) => {
         this.peerConnection!.addTrack(track, this.localStream!);
@@ -314,6 +346,7 @@ export class WebRTCService {
   }
 
   endCall() {
+    this.removeSocketListeners();
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => track.stop());
       this.localStream = null;
