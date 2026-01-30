@@ -1,4 +1,5 @@
 import { webrtcLogService } from './webrtc-log.service';
+import { getMediaStreamWithFallback } from '../utils/mediaDevices';
 
 function getIceServers(): RTCIceServer[] {
   const servers: RTCIceServer[] = [];
@@ -262,6 +263,7 @@ export class WebRTCService {
       this.socket.emit('call:initiate', {
         chatId,
         offer: offer,
+        videoMode: useVideo,
       });
 
       return this.localStream;
@@ -289,12 +291,23 @@ export class WebRTCService {
       if (options?.preCapturedStream && options.preCapturedStream.getTracks().length > 0) {
         this.localStream = options.preCapturedStream;
       } else {
-        this.localStream = await navigator.mediaDevices.getUserMedia({
+        const { stream, usedVideo, usedAudio } = await getMediaStreamWithFallback({
           audio: true,
           video: useVideo
             ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
             : false,
         });
+
+        if (!stream) {
+          throw new Error('Не удалось получить доступ к микрофону или камере');
+        }
+
+        this.localStream = stream;
+
+        if (useVideo && !usedVideo) {
+          webrtcLogService.add('Camera not available (answerer), using audio-only');
+          alert('Камера недоступна. Звонок будет только аудио.');
+        }
       }
 
       this.peerConnection = new RTCPeerConnection({

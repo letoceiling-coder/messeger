@@ -551,6 +551,7 @@ export class MessagerWebSocketGateway
         chatId: dto.chatId,
         offer: dto.offer,
         callerId: client.userId,
+        videoMode: dto.videoMode ?? true, // По умолчанию видеозвонок для обратной совместимости
       });
 
       // Таймаут «собеседник не ответил» (сек, из env или 45)

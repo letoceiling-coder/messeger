@@ -26,10 +26,12 @@ export const ChatPage = () => {
   const [isInCall, setIsInCall] = useState(false);
   const [callMode, setCallMode] = useState<'voice' | 'video'>('video');
   const [useEncryption, setUseEncryption] = useState(false);
+  const [hasCameraAvailable, setHasCameraAvailable] = useState(true);
   const [incomingCall, setIncomingCall] = useState<{
     chatId: string;
     callerId: string;
     offer: RTCSessionDescriptionInit;
+    videoMode?: boolean;
   } | null>(null);
   const [missedCall, setMissedCall] = useState<{ chatId: string; at: Date } | null>(null);
   const incomingCallRef = useRef<typeof incomingCall>(null);
@@ -172,6 +174,13 @@ export const ChatPage = () => {
     if (!forwardMessageToSend) return;
     chatsService.getChats().then(setForwardChats).catch(() => setForwardChats([]));
   }, [forwardMessageToSend]);
+
+  // Проверка доступности камеры при монтировании компонента
+  useEffect(() => {
+    checkMediaDevices().then((devices) => {
+      setHasCameraAvailable(devices.hasCamera);
+    });
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
@@ -477,7 +486,7 @@ export const ChatPage = () => {
         isIncoming={isIncoming}
         callerId={incomingCall?.callerId}
         offer={incomingCall?.offer}
-        videoMode={isIncoming ? true : callMode === 'video'}
+        videoMode={isIncoming ? (incomingCall?.videoMode ?? true) : callMode === 'video'}
         contactName={contactName}
         onEnd={handleEndCall}
         onAccepted={soundService.stopRingtone}
@@ -564,15 +573,17 @@ export const ChatPage = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                 </svg>
               </button>
-              <button
-                onClick={handleStartVideoCall}
-                className="p-2.5 rounded-full bg-[#2d2d2f] hover:bg-[#3d3d3f] text-[#0a84ff]"
-                title="Видеозвонок"
-              >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" />
-                </svg>
-              </button>
+              {hasCameraAvailable && (
+                <button
+                  onClick={handleStartVideoCall}
+                  className="p-2.5 rounded-full bg-[#2d2d2f] hover:bg-[#3d3d3f] text-[#0a84ff]"
+                  title="Видеозвонок"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" />
+                  </svg>
+                </button>
+              )}
               <button
                 onClick={handleStartVoiceCall}
                 className="p-2.5 rounded-full bg-[#2d2d2f] hover:bg-[#3d3d3f] text-[#0a84ff]"
