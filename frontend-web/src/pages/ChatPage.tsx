@@ -7,7 +7,10 @@ import { useWebSocket } from '../contexts/WebSocketContext';
 import { useAuth } from '../contexts/AuthContext';
 import { VoiceRecorder } from '../components/VoiceRecorder';
 import { VideoCall } from '../components/VideoCall';
+import { MessageInputBar } from '../components/MessageInputBar';
+import { EmojiPicker } from '../components/EmojiPicker';
 import { encryptionService } from '../services/encryption.service';
+import { mediaService } from '../services/media.service';
 import { api } from '../services/api';
 
 export const ChatPage = () => {
@@ -27,8 +30,19 @@ export const ChatPage = () => {
   } | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isSending, setIsSending] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [selectedMedia, setSelectedMedia] = useState<{ file: File; preview: string; type: 'image' | 'video' }[]>([]);
+  const [fullscreenMedia, setFullscreenMedia] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: Message } | null>(null);
+  const [forwardMessageToSend, setForwardMessageToSend] = useState<Message | null>(null);
+  const [forwardChats, setForwardChats] = useState<Chat[]>([]);
+  const [forwarding, setForwarding] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastTempMessageIdRef = useRef<string | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { socket, isUserOnline, connectionStatus } = useWebSocket();
   const { user } = useAuth();
 
@@ -94,6 +108,10 @@ export const ChatPage = () => {
       if (data.chatId === chatId) setIncomingCall(data);
     };
 
+    const handleCallEnd = (data: { chatId: string }) => {
+      if (data.chatId === chatId) setIncomingCall(null);
+    };
+
     const handleDeliveryStatus = (data: { messageId: string; status: string }) => {
       setMessages((prev) =>
         prev.map((m) =>
@@ -108,22 +126,47 @@ export const ChatPage = () => {
       if (data?.message) alert('Ошибка: ' + data.message);
     };
 
+    const handleMessageDeleted = (data: { messageId: string; chatId: string }) => {
+      if (data.chatId === chatId) {
+        setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
+      }
+    };
+
     socket.onMessageReceived(handleMessageReceived);
     socket.on('call:offer', handleCallOffer);
+    socket.on('call:end', handleCallEnd);
     socket.onDeliveryStatus(handleDeliveryStatus);
+    socket.on('message:deleted', handleMessageDeleted);
     socket.on('error', handleSocketError);
 
     return () => {
       socket.offMessageReceived(handleMessageReceived);
       socket.off('call:offer', handleCallOffer);
+      socket.off('call:end', handleCallEnd);
       socket.offDeliveryStatus(handleDeliveryStatus);
+      socket.off('message:deleted', handleMessageDeleted);
       socket.off('error', handleSocketError);
     };
   }, [chatId, socket, navigate, user?.id, connectionStatus]);
 
   useEffect(() => {
+    if (!forwardMessageToSend) return;
+    chatsService.getChats().then(setForwardChats).catch(() => setForwardChats([]));
+  }, [forwardMessageToSend]);
+
+  useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const t = setTimeout(() => document.addEventListener('click', close), 0);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener('click', close);
+    };
+  }, [contextMenu]);
 
   const loadMessages = async () => {
     if (!chatId) return;
@@ -191,8 +234,8 @@ export const ChatPage = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     const text = newMessage.trim();
     if (!text || !chatId || !user) return;
     const tempId = `temp-${Date.now()}`;
@@ -206,18 +249,82 @@ export const ChatPage = () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       deliveryStatus: 'sent',
+      replyToId: replyingTo?.id,
+      replyTo: replyingTo ? { id: replyingTo.id, content: replyingTo.content, messageType: replyingTo.messageType, userId: replyingTo.userId } : undefined,
     };
     lastTempMessageIdRef.current = tempId;
     setMessages((prev) => [...prev, optimistic]);
     setNewMessage('');
     scrollToBottom();
+    setIsSending(true);
     try {
-      await socket.sendMessage(chatId, text, useEncryption);
+      await socket.sendMessage(chatId, text, useEncryption, replyingTo?.id ?? undefined);
+      setReplyingTo(null);
     } catch (err: any) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       lastTempMessageIdRef.current = null;
       const msg = err?.message || err?.response?.data?.message || 'Не удалось отправить сообщение.';
       alert(msg + (msg.includes('соединен') ? '' : ' Проверьте интернет и обновите страницу.'));
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleAttachmentClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+    const next: { file: File; preview: string; type: 'image' | 'video' }[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type.startsWith('image/')) {
+        next.push({ file, preview: URL.createObjectURL(file), type: 'image' });
+      } else if (file.type.startsWith('video/')) {
+        next.push({ file, preview: URL.createObjectURL(file), type: 'video' });
+      }
+    }
+    setSelectedMedia((prev) => [...prev, ...next]);
+    e.target.value = '';
+  };
+
+  const removeSelectedMedia = (index: number) => {
+    setSelectedMedia((prev) => {
+      const item = prev[index];
+      if (item?.preview) URL.revokeObjectURL(item.preview);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const clearSelectedMedia = () => {
+    selectedMedia.forEach((m) => m.preview && URL.revokeObjectURL(m.preview));
+    setSelectedMedia([]);
+  };
+
+  const handleSendMedia = async () => {
+    if (!selectedMedia.length || !chatId || !user) return;
+    setIsSending(true);
+    const caption = newMessage.trim() || undefined;
+    try {
+      await Promise.all(
+        selectedMedia.map((item, i) => {
+          const cap = i === 0 ? caption : undefined;
+          return item.type === 'image'
+            ? mediaService.uploadImage(item.file, chatId, cap)
+            : mediaService.uploadVideo(item.file, chatId, cap);
+        }),
+      );
+      clearSelectedMedia();
+      setNewMessage('');
+      loadMessages();
+      scrollToBottom();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Не удалось отправить медиа.';
+      alert(msg);
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -280,9 +387,15 @@ export const ChatPage = () => {
   const getAudioUrl = (audioUrl?: string) => {
     if (!audioUrl) return null;
     if (audioUrl.startsWith('http')) return audioUrl;
-    // В production — относительный URL (тот же хост), чтобы не было Mixed Content по HTTPS
     const baseUrl = import.meta.env.DEV ? (import.meta.env.VITE_API_URL || '') : '';
     return baseUrl ? `${baseUrl}${audioUrl}` : audioUrl;
+  };
+
+  const getMediaUrl = (mediaUrl?: string | null) => {
+    if (!mediaUrl) return null;
+    if (mediaUrl.startsWith('http')) return mediaUrl;
+    const baseUrl = import.meta.env.DEV ? (import.meta.env.VITE_API_URL || '') : '';
+    return baseUrl ? `${baseUrl}${mediaUrl}` : mediaUrl;
   };
 
   const handleStartVideoCall = () => {
@@ -447,9 +560,40 @@ export const ChatPage = () => {
         {messages.map((message) => {
           const isOwn = message.userId === user?.id;
           const isVoice = message.messageType === 'voice';
+          const isImage = message.messageType === 'image';
+          const isVideo = message.messageType === 'video';
           const audioUrl = getAudioUrl(message.audioUrl);
+          const mediaUrl = getMediaUrl(message.mediaUrl);
           const canSelect = isOwn && !message.id.startsWith('temp-');
           const isSelected = selectedIds.has(message.id);
+
+          const handleContextMenu = (e: React.MouseEvent) => {
+            e.preventDefault();
+            if (selectionMode) return;
+            setContextMenu({ x: e.clientX, y: e.clientY, message });
+          };
+          const handleTouchStart = (e: React.TouchEvent) => {
+            if (selectionMode) return;
+            const touch = e.touches[0];
+            const x = touch.clientX;
+            const y = touch.clientY;
+            longPressTimerRef.current = setTimeout(() => {
+              longPressTimerRef.current = null;
+              setContextMenu({ x, y, message });
+            }, 500);
+          };
+          const handleTouchEnd = () => {
+            if (longPressTimerRef.current) {
+              clearTimeout(longPressTimerRef.current);
+              longPressTimerRef.current = null;
+            }
+          };
+          const handleTouchMove = () => {
+            if (longPressTimerRef.current) {
+              clearTimeout(longPressTimerRef.current);
+              longPressTimerRef.current = null;
+            }
+          };
 
           return (
             <div
@@ -460,6 +604,10 @@ export const ChatPage = () => {
                   ? () => toggleSelectMessage(message.id)
                   : undefined
               }
+              onContextMenu={handleContextMenu}
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+              onTouchMove={handleTouchMove}
             >
               <div
                 className={`max-w-[85%] sm:max-w-md min-w-0 overflow-hidden px-4 py-2.5 rounded-2xl flex items-start gap-2 ${
@@ -480,12 +628,44 @@ export const ChatPage = () => {
                   </span>
                 )}
                 <div className="flex-1 min-w-0 overflow-hidden">
+                  {message.replyTo && (
+                    <div className={`mb-1.5 pl-2 border-l-2 ${isOwn ? 'border-blue-200' : 'border-white/40'} text-xs opacity-90 truncate max-w-full`}>
+                      {message.replyTo.content && (
+                        <span className="block truncate">{message.replyTo.content}</span>
+                      )}
+                    </div>
+                  )}
                   {isVoice && audioUrl ? (
                     <div className="chat-audio-wrap" onClick={selectionMode ? (e) => e.stopPropagation() : undefined}>
                       <audio controls preload="metadata">
                         <source src={audioUrl} type="audio/webm" />
                         <source src={audioUrl} type="audio/mpeg" />
                       </audio>
+                    </div>
+                  ) : isImage && mediaUrl ? (
+                    <div className="space-y-1">
+                      <img
+                        src={mediaUrl}
+                        alt=""
+                        className="max-w-full max-h-64 rounded-lg object-cover cursor-pointer"
+                        onClick={(ev) => { if (!selectionMode) { ev.stopPropagation(); setFullscreenMedia(mediaUrl); } }}
+                      />
+                      {message.content && message.content !== 'Фото' && (
+                        <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                      )}
+                    </div>
+                  ) : isVideo && mediaUrl ? (
+                    <div className="space-y-1">
+                      <video
+                        src={mediaUrl}
+                        controls
+                        playsInline
+                        className="max-w-full max-h-64 rounded-lg"
+                        onClick={(ev) => selectionMode && ev.stopPropagation()}
+                      />
+                      {message.content && message.content !== 'Видео' && (
+                        <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                      )}
                     </div>
                   ) : (
                     <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
@@ -502,26 +682,233 @@ export const ChatPage = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Ввод: голосовое + текст + отправить — всегда виден, не уходит за экран */}
-      <div className="chat-page-footer flex-none shrink-0 border-t border-white/10 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-[#141414] space-y-2">
-        <VoiceRecorder chatId={chatId || ''} onSent={() => loadMessages()} />
-        <form onSubmit={handleSendMessage} className="flex gap-2 min-h-0">
-          <input
-            type="text"
+      {contextMenu && (
+        <div
+          className="fixed z-50 min-w-[140px] py-1 rounded-xl bg-[#2d2d2f] border border-white/10 shadow-xl"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="w-full px-4 py-2 text-left text-sm text-white hover:bg-white/10"
+            onClick={() => {
+              setReplyingTo(contextMenu.message);
+              setContextMenu(null);
+            }}
+          >
+            Ответить
+          </button>
+          {contextMenu.message.userId === user?.id && (
+            <>
+              <button
+                type="button"
+                className="w-full px-4 py-2 text-left text-sm text-white hover:bg-white/10"
+                onClick={async () => {
+                  try {
+                    await messagesService.deleteMessages([contextMenu.message.id]);
+                    setMessages((prev) => prev.filter((m) => m.id !== contextMenu.message.id));
+                  } catch {
+                    alert('Не удалось удалить сообщение');
+                  }
+                  setContextMenu(null);
+                }}
+              >
+                Удалить у меня
+              </button>
+              <button
+                type="button"
+                className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-white/10"
+                onClick={async () => {
+                  try {
+                    await messagesService.deleteForEveryone(contextMenu.message.id);
+                    setMessages((prev) => prev.filter((m) => m.id !== contextMenu.message.id));
+                  } catch {
+                    alert('Не удалось удалить у всех');
+                  }
+                  setContextMenu(null);
+                }}
+              >
+                Удалить у всех
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            className="w-full px-4 py-2 text-left text-sm text-white hover:bg-white/10"
+            onClick={() => {
+              setForwardMessageToSend(contextMenu.message);
+              setContextMenu(null);
+            }}
+          >
+            Переслать
+          </button>
+        </div>
+      )}
+
+      {forwardMessageToSend && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setForwardMessageToSend(null)}
+        >
+          <div
+            className="bg-[#1c1c1e] rounded-2xl max-w-sm w-full max-h-[70vh] flex flex-col border border-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-white/10">
+              <h3 className="font-semibold text-white">Переслать в чат</h3>
+              <p className="text-sm text-[#86868a] mt-0.5 truncate">
+                {forwardMessageToSend.content || 'Медиа'}
+              </p>
+            </div>
+            <ul className="overflow-y-auto flex-1 min-h-0 p-2">
+              {forwardChats
+                .filter((c) => c.id !== chatId)
+                .map((chat) => {
+                  const other = chat.members?.find((m) => m.userId !== user?.id)?.user;
+                  const title = chat.name || other?.username || other?.email || chat.id.slice(0, 8);
+                  return (
+                    <li key={chat.id}>
+                      <button
+                        type="button"
+                        disabled={forwarding}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/10 text-left disabled:opacity-50"
+                        onClick={async () => {
+                          setForwarding(true);
+                          try {
+                            const res = await messagesService.forwardMessage(
+                              forwardMessageToSend.id,
+                              chat.id,
+                            );
+                            if (res.success) {
+                              setForwardMessageToSend(null);
+                              setForwardChats([]);
+                            } else {
+                              alert('Не удалось переслать');
+                            }
+                          } catch {
+                            alert('Не удалось переслать');
+                          } finally {
+                            setForwarding(false);
+                          }
+                        }}
+                      >
+                        <div className="w-10 h-10 rounded-full bg-[#2d2d2f] flex items-center justify-center text-sm font-semibold shrink-0">
+                          {title.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="text-white truncate">{title}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+            </ul>
+            {forwardChats.filter((c) => c.id !== chatId).length === 0 && (
+              <p className="p-4 text-sm text-[#86868a]">Нет других чатов для пересылки</p>
+            )}
+            <div className="p-3 border-t border-white/10">
+              <button
+                type="button"
+                className="w-full py-2 rounded-xl bg-[#2d2d2f] text-white hover:bg-[#3d3d3f]"
+                onClick={() => setForwardMessageToSend(null)}
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Панель ввода в стиле Telegram: микрофон | смайлик | поле | скрепка | отправка */}
+      <div className="chat-page-footer relative flex-none shrink-0 border-t border-white/10 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-[#141414]">
+        {replyingTo && (
+          <div className="flex items-center gap-2 py-2 px-3 mb-1 rounded-xl bg-[#2d2d2f] border border-white/10">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-[#86868a]">Ответ на:</p>
+              <p className="text-sm truncate">{replyingTo.content || 'Сообщение'}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReplyingTo(null)}
+              className="shrink-0 p-1.5 rounded-full hover:bg-white/10 text-[#86868a]"
+              aria-label="Отменить ответ"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,video/*,.pdf,.doc,.docx"
+          multiple
+          className="hidden"
+          onChange={handleFileSelect}
+        />
+        <EmojiPicker
+          open={emojiOpen}
+          onClose={() => setEmojiOpen(false)}
+          onSelect={(emoji) => setNewMessage((prev) => prev + emoji)}
+        />
+        {selectedMedia.length > 0 && (
+          <div className="w-full flex gap-2 overflow-x-auto py-2 mb-1">
+            {selectedMedia.map((item, i) => (
+              <div key={i} className="relative shrink-0">
+                {item.type === 'image' ? (
+                  <img src={item.preview} alt="" className="w-16 h-16 object-cover rounded-lg" />
+                ) : (
+                  <video src={item.preview} className="w-16 h-16 object-cover rounded-lg" muted />
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeSelectedMedia(i)}
+                  className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center text-xs"
+                  aria-label="Убрать"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex flex-wrap items-end gap-2 min-h-0 w-full">
+          <VoiceRecorder chatId={chatId || ''} onSent={() => loadMessages()} />
+          <MessageInputBar
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            onChange={setNewMessage}
+            onSubmit={() => (selectedMedia.length > 0 ? handleSendMedia() : handleSendMessage())}
+            onEmojiClick={() => setEmojiOpen((v) => !v)}
+            onAttachmentClick={handleAttachmentClick}
             placeholder="Сообщение"
-            className="flex-1 px-4 py-3 rounded-xl bg-[#2d2d2f] text-white placeholder-[#86868a] focus:outline-none focus:ring-2 focus:ring-[#0a84ff]"
+            isSending={isSending}
+            hasAttachments={selectedMedia.length > 0}
+            renderMic={null}
+          />
+        </div>
+      </div>
+
+      {fullscreenMedia && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4"
+          onClick={() => setFullscreenMedia(null)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Escape' && setFullscreenMedia(null)}
+        >
+          <img
+            src={fullscreenMedia}
+            alt=""
+            className="max-w-full max-h-full object-contain"
+            onClick={(e) => e.stopPropagation()}
           />
           <button
-            type="submit"
-            disabled={!newMessage.trim()}
-            className="px-5 py-3 rounded-xl bg-[#0a84ff] hover:bg-[#409cff] font-medium disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            type="button"
+            onClick={() => setFullscreenMedia(null)}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center"
+            aria-label="Закрыть"
           >
-            Отправить
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
-        </form>
-      </div>
+        </div>
+      )}
     </div>
   );
 };

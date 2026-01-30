@@ -66,6 +66,7 @@ model Message {
   content     String
   messageType String   @default("text") @map("message_type")
   audioUrl    String?  @map("audio_url")
+  mediaUrl    String?  @map("media_url")
   replyToId   String?  @map("reply_to_id")
   isEdited    Boolean  @default(false) @map("is_edited")
   isDeleted   Boolean  @default(false) @map("is_deleted")

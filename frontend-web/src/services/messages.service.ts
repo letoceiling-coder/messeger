@@ -15,4 +15,22 @@ export const messagesService = {
     const response = await api.post<{ deleted: number }>('/messages/delete-many', { messageIds });
     return response.data;
   },
+
+  async deleteForEveryone(messageId: string): Promise<{ success: boolean }> {
+    const response = await api.post<{ success: boolean }>('/messages/delete-for-everyone', {
+      messageId,
+    });
+    return response.data;
+  },
+
+  async forwardMessage(
+    messageId: string,
+    targetChatId: string,
+  ): Promise<{ success: boolean; message?: Message }> {
+    const response = await api.post<{ success: boolean; message?: Message }>('/messages/forward', {
+      messageId,
+      targetChatId,
+    });
+    return response.data;
+  },
 };

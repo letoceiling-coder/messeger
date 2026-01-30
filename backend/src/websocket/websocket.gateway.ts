@@ -81,6 +81,10 @@ export class MessagerWebSocketGateway
     this.server.to(`chat:${payload.chatId}`).emit('message:received', data);
   }
 
+  emitMessageDeleted(chatId: string, messageId: string) {
+    this.server.to(`chat:${chatId}`).emit('message:deleted', { messageId, chatId });
+  }
+
   async handleConnection(client: AuthenticatedSocket) {
     try {
       // Извлечение токена из query параметра или auth
@@ -211,21 +215,26 @@ export class MessagerWebSocketGateway
           encryptedContent: dto.encryptedContent,
           encryptedKey: dto.encryptedKey,
           iv: dto.iv,
+          replyToId: dto.replyToId || undefined,
         });
       }
 
+      const msg = message as any;
       const payload = {
-        id: message.id,
-        chatId: message.chatId,
-        userId: message.userId,
-        content: message.content,
-        messageType: message.messageType,
-        audioUrl: message.audioUrl,
-        isEncrypted: message.isEncrypted,
-        encryptedContent: message.encryptedContent,
-        encryptedKey: message.encryptedKey,
-        iv: message.iv,
-        createdAt: message.createdAt,
+        id: msg.id,
+        chatId: msg.chatId,
+        userId: msg.userId,
+        content: msg.content,
+        messageType: msg.messageType,
+        audioUrl: msg.audioUrl,
+        mediaUrl: msg.mediaUrl,
+        replyToId: msg.replyToId,
+        replyTo: msg.replyTo,
+        isEncrypted: msg.isEncrypted,
+        encryptedContent: msg.encryptedContent,
+        encryptedKey: msg.encryptedKey,
+        iv: msg.iv,
+        createdAt: msg.createdAt,
       };
 
       // Всем в комнате чата (получатели)

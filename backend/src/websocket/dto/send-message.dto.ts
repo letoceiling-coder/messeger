@@ -32,4 +32,8 @@ export class SendMessageDto {
   @IsString()
   @IsOptional()
   iv?: string;
+
+  @IsString()
+  @IsOptional()
+  replyToId?: string;
 }
