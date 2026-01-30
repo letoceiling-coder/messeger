@@ -46,6 +46,8 @@ export class MessagerWebSocketGateway
   private readonly logger = new Logger(WebSocketGateway.name);
   private connectedUsers = new Map<string, string>(); // userId -> socketId
   private activeCalls = new Map<string, { callerId: string; receiverId: string }>(); // chatId -> call info
+  /** Таймауты «не ответил» по chatId — очищаются при answer/reject/end */
+  private callNoAnswerTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     private jwtService: JwtService,
@@ -549,6 +551,21 @@ export class MessagerWebSocketGateway
         callerId: client.userId,
       });
 
+      // Таймаут «собеседник не ответил» (сек, из env или 45)
+      const noAnswerSec = Math.max(30, parseInt(process.env.CALL_NO_ANSWER_TIMEOUT_SEC || '45', 10));
+      const timer = setTimeout(() => {
+        this.callNoAnswerTimers.delete(dto.chatId);
+        if (!this.activeCalls.has(dto.chatId)) return;
+        const info = this.activeCalls.get(dto.chatId)!;
+        this.activeCalls.delete(dto.chatId);
+        const callerSocketId = this.connectedUsers.get(info.callerId);
+        if (callerSocketId) {
+          this.server.to(callerSocketId).emit('call:no-answer', { chatId: dto.chatId });
+        }
+        this.logger.log(`Call no answer: ${dto.chatId}`);
+      }, noAnswerSec * 1000);
+      this.callNoAnswerTimers.set(dto.chatId, timer);
+
       this.logger.log(
         `Call initiated: ${client.userId} -> ${receiver.userId} in chat ${dto.chatId}`,
       );
@@ -580,6 +597,7 @@ export class MessagerWebSocketGateway
     }
 
     try {
+      this.clearCallNoAnswerTimer(dto.chatId);
       const callInfo = this.activeCalls.get(dto.chatId);
       if (!callInfo) {
         client.emit('call:error', {
@@ -646,6 +664,14 @@ export class MessagerWebSocketGateway
     }
   }
 
+  private clearCallNoAnswerTimer(chatId: string) {
+    const t = this.callNoAnswerTimers.get(chatId);
+    if (t) {
+      clearTimeout(t);
+      this.callNoAnswerTimers.delete(chatId);
+    }
+  }
+
   @SubscribeMessage('call:end')
   async handleCallEnd(
     @ConnectedSocket() client: AuthenticatedSocket,
@@ -656,6 +682,7 @@ export class MessagerWebSocketGateway
     }
 
     try {
+      this.clearCallNoAnswerTimer(data.chatId);
       const callInfo = this.activeCalls.get(data.chatId);
       if (!callInfo) {
         return;
@@ -693,6 +720,7 @@ export class MessagerWebSocketGateway
     }
 
     try {
+      this.clearCallNoAnswerTimer(data.chatId);
       const callInfo = this.activeCalls.get(data.chatId);
       if (!callInfo) {
         return;

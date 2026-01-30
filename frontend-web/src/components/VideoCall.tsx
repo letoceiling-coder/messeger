@@ -28,6 +28,7 @@ export const VideoCall = ({
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isConnecting, setIsConnecting] = useState(true);
   const [connectionError, setConnectionError] = useState(false);
+  const [noAnswer, setNoAnswer] = useState(false);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null); // Голосовой звонок: воспроизведение удалённого аудио
@@ -53,6 +54,11 @@ export const VideoCall = ({
     webrtc.onConnectionFailed(() => {
       setIsConnecting(false);
       setConnectionError(true);
+    });
+
+    webrtc.onNoAnswer(() => {
+      setIsConnecting(false);
+      setNoAnswer(true);
     });
 
     const initializeCall = async () => {
@@ -193,14 +199,14 @@ export const VideoCall = ({
         </div>
         <p className="text-white font-medium text-lg">{contactName}</p>
         <p className="text-[#86868a] text-sm mt-1">
-          {connectionError ? 'Не удалось подключиться' : isConnecting ? 'Подключение...' : 'Голосовой звонок'}
+          {noAnswer ? 'Собеседник не ответил' : connectionError ? 'Не удалось подключиться' : isConnecting ? 'Подключение...' : 'Голосовой звонок'}
         </p>
-        {connectionError && (
+        {(connectionError || noAnswer) && (
           <p className="text-[#86868a] text-xs mt-2 max-w-xs text-center">
-            Собеседник не ответил или проблема с сетью. Попробуйте позже.
+            {noAnswer ? 'Собеседник не ответил на звонок.' : 'Собеседник не ответил или проблема с сетью. Попробуйте позже.'}
           </p>
         )}
-        {connectionError && (
+        {(connectionError || noAnswer) && (
           <button
             onClick={onEnd}
             className="mt-4 px-6 py-2 rounded-xl bg-[#2d2d2f] text-white hover:bg-[#3d3d3f]"
@@ -235,17 +241,17 @@ export const VideoCall = ({
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
       <div className="flex-1 relative">
-        {(isConnecting || connectionError) && (
+        {(isConnecting || connectionError || noAnswer) && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 gap-4">
             <div className="text-white">
-              {connectionError ? 'Не удалось подключиться' : 'Подключение...'}
+              {noAnswer ? 'Собеседник не ответил' : connectionError ? 'Не удалось подключиться' : 'Подключение...'}
             </div>
-            {connectionError && (
+            {(connectionError || noAnswer) && (
               <p className="text-gray-400 text-sm text-center max-w-xs">
-                Не удалось установить связь. Возможные причины: собеседник не ответил, проблемы с сетью или файрволом. Обновите страницу и попробуйте снова.
+                {noAnswer ? 'Собеседник не ответил на звонок.' : 'Не удалось установить связь. Возможные причины: собеседник не ответил, проблемы с сетью или файрволом. Обновите страницу и попробуйте снова.'}
               </p>
             )}
-            {connectionError && (
+            {(connectionError || noAnswer) && (
               <button
                 onClick={onEnd}
                 className="px-6 py-2 rounded-xl bg-red-600 text-white hover:bg-red-500"

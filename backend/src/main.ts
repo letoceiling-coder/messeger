@@ -4,6 +4,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { AppModule } from './app.module';
+import { IoAdapterWithPing } from './websocket/io-adapter-ping';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -40,6 +41,9 @@ async function bootstrap() {
   app.useStaticAssets(uploadsDir, {
     prefix: '/uploads/',
   });
+
+  // Heartbeat (ping/pong) для WebSocket — быстрее обнаруживать мёртвые соединения
+  app.useWebSocketAdapter(new IoAdapterWithPing(app));
 
   const port = process.env.PORT || 30000; // Используем порт 30000 для shared hosting
   await app.listen(port, '127.0.0.1'); // Слушаем только на localhost

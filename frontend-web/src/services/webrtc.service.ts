@@ -1,14 +1,23 @@
-// Несколько STUN-серверов для стабильного соединения (Google, Twilio)
-const ICE_SERVERS: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' },
-  { urls: 'stun:stun4.l.google.com:19302' },
-];
-
-// Для NAT/файрвола: добавить TURN (coturn или облачный)
-// const TURN = { urls: 'turn:your-turn.com:3478', username: '...', credential: '...' };
+// STUN + опциональный TURN из env (для NAT/мобильных сетей)
+function getIceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+  ];
+  const turnUrl = import.meta.env.VITE_TURN_URL;
+  if (turnUrl && typeof turnUrl === 'string' && turnUrl.trim()) {
+    const turn: RTCIceServer = { urls: turnUrl.trim() };
+    const user = import.meta.env.VITE_TURN_USER;
+    const cred = import.meta.env.VITE_TURN_CREDENTIAL;
+    if (user != null && String(user).trim()) turn.username = String(user).trim();
+    if (cred != null && String(cred).trim()) turn.credential = String(cred).trim();
+    servers.push(turn);
+  }
+  return servers;
+}
 
 export class WebRTCService {
   private peerConnection: RTCPeerConnection | null = null;
@@ -20,6 +29,7 @@ export class WebRTCService {
   private onRemoteStreamCallback?: (stream: MediaStream) => void;
   private onCallEndCallback?: () => void;
   private onConnectionFailedCallback?: () => void;
+  private onNoAnswerCallback?: () => void;
 
   constructor(socket: any) {
     this.socket = socket;
@@ -81,6 +91,13 @@ export class WebRTCService {
         this.endCall();
       }
     });
+
+    this.socket.on('call:no-answer', (data: { chatId: string }) => {
+      if (data.chatId === this.chatId) {
+        this.endCall();
+        this.onNoAnswerCallback?.();
+      }
+    });
   }
 
   async initiateCall(chatId: string, options?: { video?: boolean }): Promise<MediaStream> {
@@ -100,7 +117,7 @@ export class WebRTCService {
       });
 
       this.peerConnection = new RTCPeerConnection({
-        iceServers: ICE_SERVERS,
+        iceServers: getIceServers(),
         iceCandidatePoolSize: 10,
       });
 
@@ -181,7 +198,7 @@ export class WebRTCService {
       });
 
       this.peerConnection = new RTCPeerConnection({
-        iceServers: ICE_SERVERS,
+        iceServers: getIceServers(),
         iceCandidatePoolSize: 10,
       });
 
@@ -303,5 +320,9 @@ export class WebRTCService {
 
   onConnectionFailed(callback: () => void) {
     this.onConnectionFailedCallback = callback;
+  }
+
+  onNoAnswer(callback: () => void) {
+    this.onNoAnswerCallback = callback;
   }
 }

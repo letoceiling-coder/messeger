@@ -9,6 +9,17 @@ const WS_URL = import.meta.env.DEV
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'reconnecting';
 
+/** Элемент очереди сообщений при отключении (тот же payload, что и message:send) */
+type QueuedMessagePayload = {
+  chatId: string;
+  replyToId?: string;
+  content?: string;
+  isEncrypted: boolean;
+  encryptedContent?: string | null;
+  encryptedKey?: string | null;
+  iv?: string | null;
+};
+
 class WebSocketService {
   private socket: Socket | null = null;
   private token: string | null = null;
@@ -16,6 +27,8 @@ class WebSocketService {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private statusListeners: ((status: ConnectionStatus) => void)[] = [];
+  /** Очередь сообщений при отключении — отправляются при восстановлении связи */
+  private messageQueue: QueuedMessagePayload[] = [];
 
   private setStatus(status: ConnectionStatus) {
     this.statusListeners.forEach((cb) => cb(status));
@@ -52,6 +65,7 @@ class WebSocketService {
     this.socket.on('connect', () => {
       this.reconnectAttempts = 0;
       this.setStatus('connected');
+      this.flushMessageQueue();
     });
 
     this.socket.on('disconnect', () => {
@@ -79,6 +93,7 @@ class WebSocketService {
   disconnect() {
     this.intentionalDisconnect = true;
     this.token = null;
+    this.messageQueue = [];
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -90,17 +105,52 @@ class WebSocketService {
     this.setStatus('disconnected');
   }
 
+  /**
+   * Отправка очереди сообщений при восстановлении связи (без изменения бизнес-логики).
+   */
+  private flushMessageQueue() {
+    if (!this.socket?.connected || this.messageQueue.length === 0) return;
+    while (this.messageQueue.length > 0) {
+      const payload = this.messageQueue.shift()!;
+      this.socket.emit('message:send', payload);
+    }
+  }
+
   async sendMessage(
     chatId: string,
     content: string,
     useEncryption: boolean = false,
     replyToId?: string | null,
   ) {
-    if (!this.socket?.connected) {
-      throw new Error('Нет соединения с сервером. Проверьте интернет и обновите страницу.');
-    }
-
     const basePayload = { chatId, replyToId: replyToId || undefined };
+
+    if (!this.socket?.connected) {
+      // Очередь при отключении: шифруем при необходимости и сохраняем, отправим при reconnect
+      if (useEncryption) {
+        try {
+          const { encryptionService } = await import('./encryption.service');
+          const encrypted = await encryptionService.encryptMessage(content, chatId);
+          if (encrypted) {
+            this.messageQueue.push({
+              ...basePayload,
+              isEncrypted: true,
+              encryptedContent: encrypted.encrypted,
+              encryptedKey: null,
+              iv: encrypted.iv,
+            });
+            return;
+          }
+        } catch {
+          // fallback без шифрования
+        }
+      }
+      this.messageQueue.push({
+        ...basePayload,
+        content,
+        isEncrypted: false,
+      });
+      return;
+    }
 
     if (useEncryption) {
       try {
