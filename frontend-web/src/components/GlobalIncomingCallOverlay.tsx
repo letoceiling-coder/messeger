@@ -11,7 +11,8 @@ export const GlobalIncomingCallOverlay = () => {
 
   useEffect(() => {
     if (globalIncomingCall) {
-      soundService.playRingtone();
+      // Для получателя: начать воспроизведение входящего звонка (balls.mp3)
+      soundService.playIncomingRingtone();
       
       // Загрузить информацию о чате для получения имени звонящего
       chatsService.getChat(globalIncomingCall.chatId).then((chat) => {

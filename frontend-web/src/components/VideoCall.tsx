@@ -64,11 +64,11 @@ export const VideoCall = ({
 
   callDurationRef.current = callDurationSeconds;
 
-  // Рингтон для инициатора звонка (ждет ответа)
+  // Рингтон для инициатора звонка (ждет ответа) - ton.mp3
   useEffect(() => {
     if (!isIncoming && isConnecting) {
-      // Для инициатора: начать воспроизведение рингтона
-      soundService.playRingtone();
+      // Для инициатора: начать воспроизведение рингтона (ton.mp3)
+      soundService.playOutgoingRingtone();
     }
     return () => {
       // Остановить рингтон при размонтировании или подключении
