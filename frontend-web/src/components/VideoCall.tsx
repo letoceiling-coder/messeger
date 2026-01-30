@@ -32,11 +32,13 @@ export const VideoCall = ({
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null); // Голосовой звонок: воспроизведение удалённого аудио
   const webrtcServiceRef = useRef<WebRTCService | null>(null);
+  const acceptedOrConnectedRef = useRef(false); // true после «Принять» или после установки исходящего
   const { socket } = useWebSocket();
 
   useEffect(() => {
     const webrtc = new WebRTCService(socket);
     webrtcServiceRef.current = webrtc;
+    acceptedOrConnectedRef.current = false;
 
     webrtc.onRemoteStream((stream) => {
       setRemoteStream(stream);
@@ -62,6 +64,7 @@ export const VideoCall = ({
         } else {
           stream = await webrtc.initiateCall(chatId, opts);
         }
+        acceptedOrConnectedRef.current = true;
         setLocalStream(stream);
       } catch (error: unknown) {
         const err = error as { message?: string };
@@ -71,9 +74,14 @@ export const VideoCall = ({
       }
     };
 
-    initializeCall();
+    // Входящий звонок: не принимать автоматически — только по нажатию «Принять»
+    const isIncomingWaiting = isIncoming && offer;
+    if (!isIncomingWaiting) {
+      acceptedOrConnectedRef.current = true;
+      initializeCall();
+    }
 
-    const timeout = setTimeout(() => {
+    const timeout = isIncomingWaiting ? null : setTimeout(() => {
       setIsConnecting((prev) => {
         if (prev) setConnectionError(true);
         return false;
@@ -81,8 +89,12 @@ export const VideoCall = ({
     }, 28000);
 
     return () => {
-      clearTimeout(timeout);
-      webrtc.endCall();
+      if (timeout) clearTimeout(timeout);
+      if (isIncomingWaiting && !acceptedOrConnectedRef.current) {
+        webrtc.rejectCall(chatId);
+      } else {
+        webrtc.endCall();
+      }
     };
   }, [chatId, isIncoming, offer, socket, videoMode, onEnd]);
 
@@ -147,10 +159,12 @@ export const VideoCall = ({
               onClick={async () => {
                 if (offer && webrtcServiceRef.current) {
                   try {
+                    acceptedOrConnectedRef.current = true;
                     const stream = await webrtcServiceRef.current.handleOffer(chatId, offer, { video: videoMode });
                     setLocalStream(stream);
                   } catch (error) {
                     console.error('Ошибка принятия звонка:', error);
+                    acceptedOrConnectedRef.current = false;
                   }
                 }
               }}

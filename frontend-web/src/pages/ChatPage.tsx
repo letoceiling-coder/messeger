@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Message, Chat, ChatMemberUser, MessageDeliveryStatus } from '../types';
 import { messagesService } from '../services/messages.service';
@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { VoiceRecorder } from '../components/VoiceRecorder';
 import { VideoCall } from '../components/VideoCall';
 import { MessageInputBar } from '../components/MessageInputBar';
+import { VideoMessagePlayer } from '../components/VideoMessagePlayer';
 import { EmojiPicker } from '../components/EmojiPicker';
 import { encryptionService } from '../services/encryption.service';
 import { mediaService } from '../services/media.service';
@@ -28,6 +29,8 @@ export const ChatPage = () => {
     callerId: string;
     offer: RTCSessionDescriptionInit;
   } | null>(null);
+  const [missedCall, setMissedCall] = useState<{ chatId: string; at: Date } | null>(null);
+  const incomingCallRef = useRef<typeof incomingCall>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSending, setIsSending] = useState(false);
@@ -105,11 +108,19 @@ export const ChatPage = () => {
       offer: RTCSessionDescriptionInit;
       callerId: string;
     }) => {
-      if (data.chatId === chatId) setIncomingCall(data);
+      if (data.chatId === chatId) {
+        incomingCallRef.current = data;
+        setIncomingCall(data);
+      }
     };
 
     const handleCallEnd = (data: { chatId: string }) => {
-      if (data.chatId === chatId) setIncomingCall(null);
+      if (data.chatId === chatId) {
+        const hadIncoming = !!incomingCallRef.current;
+        incomingCallRef.current = null;
+        setIncomingCall(null);
+        if (hadIncoming) setMissedCall({ chatId: data.chatId, at: new Date() });
+      }
     };
 
     const handleDeliveryStatus = (data: { messageId: string; status: string }) => {
@@ -406,10 +417,11 @@ export const ChatPage = () => {
     setCallMode('voice');
     setIsInCall(true);
   };
-  const handleEndCall = () => {
+  const handleEndCall = useCallback(() => {
+    incomingCallRef.current = null;
     setIsInCall(false);
     setIncomingCall(null);
-  };
+  }, []);
 
   const toggleSelectMessage = (id: string) => {
     if (id.startsWith('temp-')) return;
@@ -465,6 +477,19 @@ export const ChatPage = () => {
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-[#0b0b0b] text-white">
+      {missedCall && missedCall.chatId === chatId && (
+        <div className="flex-none flex items-center justify-between gap-3 px-4 py-2.5 bg-amber-500/20 border-b border-amber-500/30 text-amber-200">
+          <span className="text-sm">Пропущенный звонок от {contactName}</span>
+          <button
+            type="button"
+            onClick={() => setMissedCall(null)}
+            className="p-1.5 rounded-full hover:bg-white/10"
+            aria-label="Закрыть"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+      )}
       {/* Шапка чата: назад, контакт, звонки — всегда видна */}
       <header className="flex-none flex items-center gap-3 px-4 py-3 border-b border-white/10 bg-[#141414] shrink-0">
         <button
@@ -655,13 +680,11 @@ export const ChatPage = () => {
                       )}
                     </div>
                   ) : isVideo && mediaUrl ? (
-                    <div className="space-y-1">
-                      <video
+                    <div className="space-y-1" onClick={(ev) => selectionMode && ev.stopPropagation()}>
+                      <VideoMessagePlayer
                         src={mediaUrl}
-                        controls
-                        playsInline
-                        className="max-w-full max-h-64 rounded-lg"
-                        onClick={(ev) => selectionMode && ev.stopPropagation()}
+                        className="max-h-64"
+                        onFullscreen={() => setFullscreenMedia(mediaUrl)}
                       />
                       {message.content && message.content !== 'Видео' && (
                         <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
@@ -682,10 +705,16 @@ export const ChatPage = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {contextMenu && (
+      {contextMenu && (() => {
+        const menuW = 160;
+        const menuH = 200;
+        const padding = 8;
+        const left = Math.max(padding, Math.min(contextMenu.x, typeof window !== 'undefined' ? window.innerWidth - menuW - padding : contextMenu.x));
+        const top = Math.max(padding, Math.min(contextMenu.y, typeof window !== 'undefined' ? window.innerHeight - menuH - padding : contextMenu.y));
+        return (
         <div
           className="fixed z-50 min-w-[140px] py-1 rounded-xl bg-[#2d2d2f] border border-white/10 shadow-xl"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
+          style={{ left, top }}
           onClick={(e) => e.stopPropagation()}
         >
           <button
@@ -743,7 +772,8 @@ export const ChatPage = () => {
             Переслать
           </button>
         </div>
-      )}
+        );
+      })()}
 
       {forwardMessageToSend && (
         <div
