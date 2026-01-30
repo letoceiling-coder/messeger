@@ -213,7 +213,7 @@ export const VideoCall = ({
       if (interval) clearInterval(interval); if (stopInterval) clearTimeout(stopInterval);
       remoteStream.onaddtrack = null;
     };
-  }, [remoteStream]);
+  }, [remoteStream, localStream]);
 
   // Удалённый звук: в видеорежиме на мобильных <video> часто не даёт звук — используем отдельный <audio>
   useEffect(() => {
@@ -246,7 +246,7 @@ export const VideoCall = ({
       clearTimeout(t4);
       clearTimeout(t5);
     };
-  }, [remoteStream]);
+  }, [remoteStream, localStream]);
 
   const callStartTimeRef = useRef<number | null>(null);
   // Таймер длительности разговора (старт при установленном соединении)
