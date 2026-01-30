@@ -1,10 +1,11 @@
 import { io, Socket } from 'socket.io-client';
 import { Message } from '../types';
 
-// В production — тот же хост (ws подключается к текущему origin); локально — localhost:3000
-const WS_URL =
-  import.meta.env.VITE_WS_URL ??
-  (import.meta.env.DEV ? 'http://localhost:3000' : '');
+// В production — тот же хост (пустая строка = текущий origin), чтобы не было Mixed Content по HTTPS
+const rawWs = import.meta.env.VITE_WS_URL;
+const WS_URL = import.meta.env.DEV
+  ? (rawWs || 'http://localhost:3000')
+  : (rawWs && (String(rawWs).startsWith('wss://') || String(rawWs).startsWith('https://')) ? rawWs : '');
 
 class WebSocketService {
   private socket: Socket | null = null;

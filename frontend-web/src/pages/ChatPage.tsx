@@ -259,7 +259,8 @@ export const ChatPage = () => {
   const getAudioUrl = (audioUrl?: string) => {
     if (!audioUrl) return null;
     if (audioUrl.startsWith('http')) return audioUrl;
-    const baseUrl = import.meta.env.VITE_API_URL || '';
+    // В production — относительный URL (тот же хост), чтобы не было Mixed Content по HTTPS
+    const baseUrl = import.meta.env.DEV ? (import.meta.env.VITE_API_URL || '') : '';
     return baseUrl ? `${baseUrl}${audioUrl}` : audioUrl;
   };
 

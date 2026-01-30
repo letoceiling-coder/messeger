@@ -1,9 +1,10 @@
 import axios from 'axios';
 
-// В production — тот же хост, путь /api; локально — localhost:3000
-const API_URL =
-  import.meta.env.VITE_API_URL ??
-  (import.meta.env.DEV ? 'http://localhost:3000' : '/api');
+// В production — всегда относительный /api (чтобы HTTPS-страница не ходила на HTTP). Локально — localhost.
+const raw = import.meta.env.VITE_API_URL;
+const API_URL = import.meta.env.DEV
+  ? (raw || 'http://localhost:3000')
+  : (raw && String(raw).startsWith('https') ? raw : '/api');
 
 export const api = axios.create({
   baseURL: API_URL,
