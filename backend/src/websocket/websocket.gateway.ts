@@ -68,6 +68,7 @@ export class MessagerWebSocketGateway
     content?: string;
     messageType: string;
     audioUrl?: string | null;
+    mediaUrl?: string | null;
     isEncrypted?: boolean;
     encryptedContent?: string | null;
     encryptedKey?: string | null;
