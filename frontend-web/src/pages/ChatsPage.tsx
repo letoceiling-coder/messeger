@@ -5,11 +5,23 @@ import { usersService } from '../services/users.service';
 import { Chat, User as UserType, Message } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../contexts/WebSocketContext';
+import { useChats } from '../contexts/ChatsContext';
+import { soundService } from '../services/sound.service';
+import { callStatsService } from '../services/call-stats.service';
+
+function formatDuration(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
 
 export const ChatsPage = () => {
-  const [chats, setChats] = useState<Chat[]>([]);
+  const { chats, setChats, loadChats, markChatAsRead } = useChats();
   const [loading, setLoading] = useState(true);
   const [showNewChat, setShowNewChat] = useState(false);
+  const [showCallStats, setShowCallStats] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<UserType[]>([]);
   const [searching, setSearching] = useState(false);
@@ -19,35 +31,31 @@ export const ChatsPage = () => {
   const { user, logout } = useAuth();
   const { socket, isUserOnline } = useWebSocket();
 
-  const loadChats = useCallback(async () => {
-    try {
-      const data = await chatsService.getChats();
-      setChats(data);
-    } catch (error) {
-      console.error('Ошибка загрузки чатов:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const loadChatsAndFinish = useCallback(async () => {
+    setLoading(true);
+    await loadChats();
+    setLoading(false);
+  }, [loadChats]);
 
   useEffect(() => {
-    loadChats();
-  }, [loadChats]);
+    loadChatsAndFinish();
+  }, [loadChatsAndFinish]);
 
   // При возврате на список чатов — обновить список (актуальные последние сообщения и порядок)
   useEffect(() => {
-    if (location.pathname === '/') loadChats();
-  }, [location.pathname, loadChats]);
+    if (location.pathname === '/') loadChatsAndFinish();
+  }, [location.pathname, loadChatsAndFinish]);
 
   // Обновление списка чатов при получении/отправке сообщения в реальном времени
   useEffect(() => {
     const handleMessageReceived = (message: Message) => {
+      const isFromOther = message.userId !== user?.id;
+      if (isFromOther) soundService.playMessageNotification();
       setChats((prev) => {
         const chatId = message.chatId;
         const updatedAt = message.createdAt || new Date().toISOString();
         const existing = prev.find((c) => c.id === chatId);
         if (!existing) return prev;
-        const isFromOther = message.userId !== user?.id;
         const updated: Chat = {
           ...existing,
           lastMessageAt: updatedAt,
@@ -141,13 +149,49 @@ export const ChatsPage = () => {
             <p className="text-xs text-[#86868a]">{user?.email}</p>
           </div>
         </div>
-        <button
-          onClick={() => setShowNewChat(!showNewChat)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#2d2d2f] hover:bg-[#3d3d3f] text-sm font-medium"
-        >
-          <span className="text-lg">+</span> Новый чат
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowCallStats(!showCallStats)}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#2d2d2f] hover:bg-[#3d3d3f] text-sm font-medium"
+            title="Статистика звонков"
+          >
+            📊
+          </button>
+          <button
+            onClick={() => setShowNewChat(!showNewChat)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#2d2d2f] hover:bg-[#3d3d3f] text-sm font-medium"
+          >
+            <span className="text-lg">+</span> Новый чат
+          </button>
+        </div>
       </header>
+
+      {/* Статистика звонков */}
+      {showCallStats && (() => {
+        const summary = callStatsService.getStatsSummary();
+        const history = callStatsService.getCallHistory().slice(0, 20);
+        return (
+          <div className="flex-none px-4 py-3 border-b border-white/10 bg-[#141414]">
+            <h3 className="text-sm font-semibold text-[#86868a] mb-2">Статистика звонков</h3>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <span>Всего: {summary.totalCalls}</span>
+              <span>Видео: {summary.videoCalls}</span>
+              <span>Голос: {summary.voiceCalls}</span>
+              <span className="font-mono tabular-nums">Общее время: {formatDuration(summary.totalDurationSeconds)}</span>
+            </div>
+            {history.length > 0 && (
+              <ul className="mt-2 max-h-32 overflow-y-auto text-xs text-[#86868a] space-y-1">
+                {history.map((r) => (
+                  <li key={r.id}>
+                    {r.contactName || r.chatId.slice(0, 8)} — {formatDuration(r.durationSeconds)} ({r.isVideo ? 'видео' : 'голос'}), {new Date(r.endedAt).toLocaleString('ru-RU')}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Поиск пользователей (новый чат) */}
       {showNewChat && (
@@ -222,7 +266,10 @@ export const ChatsPage = () => {
                 <li key={chat.id}>
                   <button
                     type="button"
-                    onClick={() => navigate(`/chat/${chat.id}`)}
+                    onClick={() => {
+                      markChatAsRead(chat.id);
+                      navigate(`/chat/${chat.id}`);
+                    }}
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 active:bg-white/10 text-left"
                   >
                     <div className="relative shrink-0">

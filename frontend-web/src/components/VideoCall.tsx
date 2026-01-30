@@ -12,6 +12,18 @@ interface VideoCallProps {
   /** Имя контакта для отображения */
   contactName?: string;
   onEnd: () => void;
+  /** Вызывается при принятии входящего звонка (остановить мелодию) */
+  onAccepted?: () => void;
+  /** Вызывается при завершении разговора: длительность (сек), chatId, видеозвонок */
+  onCallEndWithStats?: (durationSeconds: number, chatId: string, isVideo: boolean) => void;
+}
+
+function formatDuration(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
 export const VideoCall = ({
@@ -21,6 +33,8 @@ export const VideoCall = ({
   videoMode = true,
   contactName = 'Собеседник',
   onEnd,
+  onAccepted,
+  onCallEndWithStats,
 }: VideoCallProps) => {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
@@ -29,12 +43,16 @@ export const VideoCall = ({
   const [isConnecting, setIsConnecting] = useState(true);
   const [connectionError, setConnectionError] = useState(false);
   const [noAnswer, setNoAnswer] = useState(false);
+  const [callDurationSeconds, setCallDurationSeconds] = useState(0);
+  const callDurationRef = useRef(0);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement>(null); // Голосовой звонок: воспроизведение удалённого аудио
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const webrtcServiceRef = useRef<WebRTCService | null>(null);
-  const acceptedOrConnectedRef = useRef(false); // true после «Принять» или после установки исходящего
+  const acceptedOrConnectedRef = useRef(false);
   const { socket } = useWebSocket();
+
+  callDurationRef.current = callDurationSeconds;
 
   useEffect(() => {
     const webrtc = new WebRTCService(socket);
@@ -48,6 +66,7 @@ export const VideoCall = ({
     });
 
     webrtc.onCallEnd(() => {
+      onCallEndWithStats?.(callDurationRef.current, chatId, videoMode);
       onEnd();
     });
 
@@ -102,7 +121,7 @@ export const VideoCall = ({
         webrtc.endCall();
       }
     };
-  }, [chatId, isIncoming, offer, socket, videoMode, onEnd]);
+  }, [chatId, isIncoming, offer, socket, videoMode, onEnd, onCallEndWithStats]);
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
@@ -117,15 +136,35 @@ export const VideoCall = ({
     }
   }, [remoteStream]);
 
-  // Голосовой звонок: обязательно воспроизводить удалённый аудиопоток
+  // Голосовой звонок: воспроизведение удалённого аудио (элемент <audio> в блоке ниже)
   useEffect(() => {
     if (!videoMode && remoteAudioRef.current && remoteStream) {
       remoteAudioRef.current.srcObject = remoteStream;
-      remoteAudioRef.current.play().catch(() => {});
+      const p = remoteAudioRef.current.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
     }
   }, [videoMode, remoteStream]);
 
+  const callStartTimeRef = useRef<number | null>(null);
+  // Таймер длительности разговора (старт при установленном соединении)
+  useEffect(() => {
+    const active = localStream && !connectionError && !noAnswer;
+    if (!active) {
+      callStartTimeRef.current = null;
+      return;
+    }
+    if (callStartTimeRef.current == null) callStartTimeRef.current = Date.now();
+    const tick = () => {
+      if (callStartTimeRef.current == null) return;
+      setCallDurationSeconds(Math.floor((Date.now() - callStartTimeRef.current) / 1000));
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [localStream, connectionError, noAnswer]);
+
   const handleEndCall = () => {
+    onCallEndWithStats?.(callDurationRef.current, chatId, videoMode);
     if (webrtcServiceRef.current) {
       webrtcServiceRef.current.endCall();
     }
@@ -166,6 +205,7 @@ export const VideoCall = ({
                 if (offer && webrtcServiceRef.current) {
                   try {
                     acceptedOrConnectedRef.current = true;
+                    onAccepted?.();
                     const stream = await webrtcServiceRef.current.handleOffer(chatId, offer, { video: videoMode });
                     setLocalStream(stream);
                   } catch (error) {
@@ -190,10 +230,11 @@ export const VideoCall = ({
     );
   }
 
-  // Голосовой звонок — компактный экран без видео
+  // Голосовой звонок — компактный экран без видео (обязательно <audio> для удалённого голоса)
   if (!videoMode) {
     return (
       <div className="fixed inset-0 bg-[#0b0b0b] z-50 flex flex-col items-center justify-center">
+        <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
         <div className="w-24 h-24 rounded-full bg-[#2d2d2f] flex items-center justify-center text-4xl text-[#0a84ff] mb-6">
           {contactName.charAt(0).toUpperCase()}
         </div>
@@ -201,6 +242,11 @@ export const VideoCall = ({
         <p className="text-[#86868a] text-sm mt-1">
           {noAnswer ? 'Собеседник не ответил' : connectionError ? 'Не удалось подключиться' : isConnecting ? 'Подключение...' : 'Голосовой звонок'}
         </p>
+        {localStream && !connectionError && !noAnswer && (
+          <p className="text-[#0a84ff] font-mono text-xl mt-2 tabular-nums" aria-label="Длительность разговора">
+            {formatDuration(callDurationSeconds)}
+          </p>
+        )}
         {(connectionError || noAnswer) && (
           <p className="text-[#86868a] text-xs mt-2 max-w-xs text-center">
             {noAnswer ? 'Собеседник не ответил на звонок.' : 'Собеседник не ответил или проблема с сетью. Попробуйте позже.'}
@@ -262,6 +308,11 @@ export const VideoCall = ({
           </div>
         )}
         <video ref={remoteVideoRef} autoPlay playsInline muted={false} className="w-full h-full object-cover" />
+        {localStream && !connectionError && !noAnswer && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/60 text-white font-mono text-lg px-4 py-2 rounded-lg tabular-nums" aria-label="Длительность разговора">
+            {formatDuration(callDurationSeconds)}
+          </div>
+        )}
       </div>
       {/* Видеокружок — локальное видео в круге */}
       <div className="absolute bottom-24 right-4 w-28 h-28 rounded-full overflow-hidden border-2 border-white shadow-lg ring-2 ring-black/30">

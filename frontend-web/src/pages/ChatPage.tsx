@@ -13,6 +13,8 @@ import { EmojiPicker } from '../components/EmojiPicker';
 import { encryptionService } from '../services/encryption.service';
 import { mediaService } from '../services/media.service';
 import { api } from '../services/api';
+import { soundService } from '../services/sound.service';
+import { callStatsService } from '../services/call-stats.service';
 
 export const ChatPage = () => {
   const { chatId } = useParams<{ chatId: string }>();
@@ -57,6 +59,9 @@ export const ChatPage = () => {
       return;
     }
 
+    // При входе в чат считаем пропущенный звонок просмотренным
+    setMissedCall((prev) => (prev?.chatId === chatId ? null : prev));
+
     // Явно присоединяемся к комнате чата, чтобы получать сообщения в реальном времени
     // (важно, если чат создан после подключения WebSocket)
     socket.joinChat(chatId);
@@ -96,10 +101,11 @@ export const ChatPage = () => {
         if (prev.some((m) => m.id === message.id)) return prev;
         return [...prev, message];
       });
-        if (message.userId !== user?.id) {
-          socket.markAsDelivered(message.id);
-          socket.markAsRead(message.id);
-        }
+      if (message.userId !== user?.id) {
+        socket.markAsDelivered(message.id);
+        socket.markAsRead(message.id);
+        soundService.playMessageNotification();
+      }
       scrollToBottom();
     };
 
@@ -111,11 +117,13 @@ export const ChatPage = () => {
       if (data.chatId === chatId) {
         incomingCallRef.current = data;
         setIncomingCall(data);
+        soundService.playRingtone();
       }
     };
 
     const handleCallEnd = (data: { chatId: string }) => {
       if (data.chatId === chatId) {
+        soundService.stopRingtone();
         const hadIncoming = !!incomingCallRef.current;
         incomingCallRef.current = null;
         setIncomingCall(null);
@@ -418,6 +426,7 @@ export const ChatPage = () => {
     setIsInCall(true);
   };
   const handleEndCall = useCallback(() => {
+    soundService.stopRingtone();
     incomingCallRef.current = null;
     setIsInCall(false);
     setIncomingCall(null);
@@ -471,6 +480,10 @@ export const ChatPage = () => {
         videoMode={isIncoming ? true : callMode === 'video'}
         contactName={contactName}
         onEnd={handleEndCall}
+        onAccepted={soundService.stopRingtone}
+        onCallEndWithStats={(durationSeconds, cId, isVideo) => {
+          callStatsService.saveCall(cId, durationSeconds, isVideo, contactName);
+        }}
       />
     );
   }
