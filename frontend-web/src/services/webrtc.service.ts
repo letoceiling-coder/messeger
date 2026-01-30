@@ -190,16 +190,15 @@ export class WebRTCService {
           : false,
       });
 
-      // Звонок с телефона на ПК: без relay ICE на телефоне уходит в failed. Включаем relay только для звонящего на мобильном.
+      // Звонок с телефона на ПК: тестируем без принудительного relay (iceTransportPolicy: 'all')
       const iceServers = getIceServers();
-      const hasTurn = iceServers.some((s) => s.urls && String(s.urls).includes('turn:'));
-      const useRelay = isMobile() && hasTurn;
       this.peerConnection = new RTCPeerConnection({
         iceServers,
         iceCandidatePoolSize: 10,
-        ...(useRelay ? { iceTransportPolicy: 'relay' as RTCIceTransportPolicy } : {}),
+        // Temporarily disabled relay-only mode for mobile to test ICE gathering
+        // iceTransportPolicy: 'relay'
       });
-      if (useRelay) webrtcLogService.add('ICE: relay (TURN only, mobile caller)');
+      webrtcLogService.add('ICE policy: all (STUN+TURN, mobile caller: ' + isMobile() + ')');
 
       this.localStream.getTracks().forEach((track) => {
         this.peerConnection!.addTrack(track, this.localStream!);
