@@ -13,6 +13,16 @@ export const AudioMessage = ({ src, duration, isOwn = false, uploading = false }
   const [audioDuration, setAudioDuration] = useState(duration || 0);
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  // Пауза при размонтировании (когда пользователь выполнил другое действие)
+  useEffect(() => {
+    return () => {
+      const audio = audioRef.current;
+      if (audio && isPlaying) {
+        audio.pause();
+      }
+    };
+  }, [isPlaying]);
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
