@@ -452,7 +452,8 @@ export const VideoCall = ({
     onEnd();
   };
 
-  if (isIncoming && !localStream) {
+  // Показывать окно приема только если звонок входящий, еще нет localStream, И звонок еще не был принят
+  if (isIncoming && !localStream && !alreadyAccepted) {
     return (
       <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div className="bg-app-surface rounded-2xl p-8 max-w-sm w-full border border-app-border shadow-2xl">
