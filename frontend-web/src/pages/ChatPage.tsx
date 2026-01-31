@@ -487,6 +487,9 @@ export const ChatPage = () => {
 
   if (isInCall || incomingCall) {
     const isIncoming = !!incomingCall;
+    // autoAccept: если входящий звонок пришел через URL (из GlobalIncomingCallOverlay),
+    // значит пользователь УЖЕ нажал "Принять" и не нужно показывать второй экран приема
+    const autoAccept = isIncoming;
     return (
       <VideoCall
         chatId={chatId || ''}
@@ -500,6 +503,7 @@ export const ChatPage = () => {
         onCallEndWithStats={(durationSeconds, cId, isVideo) => {
           callStatsService.saveCall(cId, durationSeconds, isVideo, contactName);
         }}
+        autoAccept={autoAccept}
       />
     );
   }
