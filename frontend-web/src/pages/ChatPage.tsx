@@ -11,6 +11,9 @@ import { MessageInputBar } from '../components/MessageInputBar';
 import { VideoMessagePlayer } from '../components/VideoMessagePlayer';
 import { EmojiPicker } from '../components/EmojiPicker';
 import { AudioMessage } from '../components/AudioMessage';
+import { LazyImage } from '../components/LazyImage';
+import { LazyVideo } from '../components/LazyVideo';
+import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import { encryptionService } from '../services/encryption.service';
 import { mediaService } from '../services/media.service';
 import { api } from '../services/api';
@@ -26,6 +29,9 @@ export const ChatPage = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [offset, setOffset] = useState(0);
   const [isInCall, setIsInCall] = useState(false);
   const [callMode, setCallMode] = useState<'voice' | 'video'>('video');
   const [useEncryption, setUseEncryption] = useState(false);
@@ -56,13 +62,34 @@ export const ChatPage = () => {
   const { socket, isUserOnline, connectionStatus, globalIncomingCall, clearGlobalCall } = useWebSocket();
   const { user } = useAuth();
 
+  // Infinite scroll для загрузки старых сообщений
+  const { containerRef, restoreScrollPosition } = useInfiniteScroll({
+    onLoadMore: loadMoreMessages,
+    hasMore,
+    loading: loadingMore,
+    threshold: 100,
+  });
+
   const contact: ChatMemberUser | null = chat?.members?.find((m) => m.userId !== user?.id)?.user ?? null;
+
+  // Восстановление позиции скролла после загрузки старых сообщений
+  useEffect(() => {
+    if (!loadingMore && messages.length > 0) {
+      restoreScrollPosition();
+    }
+  }, [messages.length, loadingMore, restoreScrollPosition]);
 
   useEffect(() => {
     if (!chatId) {
       navigate('/');
       return;
     }
+
+    // Сброс состояния пагинации при смене чата
+    setMessages([]);
+    setOffset(0);
+    setHasMore(true);
+    setLoading(true);
 
     // При входе в чат считаем пропущенный звонок просмотренным
     setMissedCall((prev) => (prev?.chatId === chatId ? null : prev));
@@ -73,7 +100,7 @@ export const ChatPage = () => {
 
     chatsService.getChat(chatId).then(setChat).catch(() => setChat(null));
 
-    loadMessages();
+    loadMessages(true);
     initializeEncryption();
 
     const handleMessageReceived = async (message: Message) => {
@@ -204,10 +231,20 @@ export const ChatPage = () => {
     };
   }, [contextMenu]);
 
-  const loadMessages = async () => {
+  const loadMessages = async (initialLoad = true) => {
     if (!chatId) return;
+    
+    const MESSAGES_LIMIT = 30; // Загружаем по 30 сообщений
+    const currentOffset = initialLoad ? 0 : offset;
+    
     try {
-      const data = await messagesService.getMessages(chatId);
+      const data = await messagesService.getMessages(chatId, MESSAGES_LIMIT, currentOffset);
+      
+      // Если получили меньше чем limit, значит больше нет
+      if (data.length < MESSAGES_LIMIT) {
+        setHasMore(false);
+      }
+      
       const decryptedMessages = await Promise.all(
         data.map(async (msg: Message & { messageDeliveries?: { status: string }[] }) => {
           let out = { ...msg } as Message;
@@ -228,9 +265,19 @@ export const ChatPage = () => {
           return out;
         }),
       );
+      
       const ordered = decryptedMessages.reverse();
-      setMessages(ordered);
-      // Подтверждение доставки/прочтения при открытии чата — тогда у отправителя появятся две галочки
+      
+      if (initialLoad) {
+        setMessages(ordered);
+        setOffset(MESSAGES_LIMIT);
+      } else {
+        // Добавляем старые сообщения в начало (для infinite scroll)
+        setMessages((prev) => [...ordered, ...prev]);
+        setOffset((prev) => prev + MESSAGES_LIMIT);
+      }
+      
+      // Подтверждение доставки/прочтения при открытии чата
       if (user?.id && socket?.isConnected?.()) {
         ordered.forEach((msg) => {
           if (msg.userId !== user.id) {
@@ -242,8 +289,18 @@ export const ChatPage = () => {
     } catch (error) {
       console.error('Ошибка загрузки сообщений:', error);
     } finally {
-      setLoading(false);
+      if (initialLoad) {
+        setLoading(false);
+      } else {
+        setLoadingMore(false);
+      }
     }
+  };
+
+  const loadMoreMessages = async () => {
+    if (loadingMore || !hasMore || !chatId) return;
+    setLoadingMore(true);
+    await loadMessages(false);
   };
 
   const initializeEncryption = async () => {
@@ -638,8 +695,18 @@ export const ChatPage = () => {
       </header>
 
       {/* Сообщения — скролл только здесь */}
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-4 pb-2 space-y-3">
-        {messages.length === 0 && (
+      <div ref={containerRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-4 pb-2 space-y-3">
+        {/* Индикатор загрузки старых сообщений */}
+        {loadingMore && (
+          <div className="flex justify-center py-2">
+            <svg className="w-6 h-6 animate-spin text-app-text-secondary" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+          </div>
+        )}
+        
+        {messages.length === 0 && !loading && (
           <div className="flex flex-col items-center justify-center h-32 text-[#86868a] text-sm">
             <p>Пока нет сообщений.</p>
             <p>Напишите что-нибудь или нажмите на микрофон для голосового.</p>
@@ -732,40 +799,25 @@ export const ChatPage = () => {
                       />
                     </div>
                   ) : isImage && mediaUrl ? (
-                    <div className="space-y-1 relative">
-                      <img
+                    <div className="space-y-1">
+                      <LazyImage
                         src={mediaUrl}
                         alt=""
-                        className={`max-w-full max-h-64 rounded-lg object-cover cursor-pointer ${message.uploading ? 'opacity-70' : ''}`}
-                        onClick={(ev) => { if (!selectionMode && !message.uploading) { ev.stopPropagation(); setFullscreenMedia(mediaUrl); } }}
+                        onClick={() => { if (!selectionMode && !message.uploading) { setFullscreenMedia(mediaUrl); } }}
+                        uploading={message.uploading}
                       />
-                      {message.uploading && (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <svg className="w-8 h-8 animate-spin text-white" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
-                        </div>
-                      )}
                       {message.content && message.content !== 'Фото' && (
                         <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
                       )}
                     </div>
                   ) : isVideo && mediaUrl ? (
-                    <div className="space-y-1 relative" onClick={(ev) => selectionMode && ev.stopPropagation()}>
-                      <VideoMessagePlayer
+                    <div className="space-y-1" onClick={(ev) => selectionMode && ev.stopPropagation()}>
+                      <LazyVideo
                         src={mediaUrl}
-                        className={`max-h-64 ${message.uploading ? 'opacity-70' : ''}`}
+                        className="max-h-64"
                         onFullscreen={() => !message.uploading && setFullscreenMedia(mediaUrl)}
+                        uploading={message.uploading}
                       />
-                      {message.uploading && (
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <svg className="w-8 h-8 animate-spin text-white" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
-                        </div>
-                      )}
                       {message.content && message.content !== 'Видео' && (
                         <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
                       )}
