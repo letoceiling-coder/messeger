@@ -62,6 +62,8 @@ export const ChatPage = () => {
   const { socket, isUserOnline, connectionStatus, globalIncomingCall, clearGlobalCall } = useWebSocket();
   const { user } = useAuth();
 
+  const contact: ChatMemberUser | null = chat?.members?.find((m) => m.userId !== user?.id)?.user ?? null;
+
   // Infinite scroll для загрузки старых сообщений
   const { containerRef, restoreScrollPosition } = useInfiniteScroll({
     onLoadMore: loadMoreMessages,
@@ -70,14 +72,12 @@ export const ChatPage = () => {
     threshold: 100,
   });
 
-  const contact: ChatMemberUser | null = chat?.members?.find((m) => m.userId !== user?.id)?.user ?? null;
-
   // Восстановление позиции скролла после загрузки старых сообщений
   useEffect(() => {
-    if (!loadingMore && messages.length > 0) {
+    if (!loadingMore && messages.length > 0 && restoreScrollPosition) {
       restoreScrollPosition();
     }
-  }, [messages.length, loadingMore, restoreScrollPosition]);
+  }, [messages.length, loadingMore]);
 
   useEffect(() => {
     if (!chatId) {
