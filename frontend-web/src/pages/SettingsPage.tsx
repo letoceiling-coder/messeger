@@ -162,9 +162,9 @@ export const SettingsPage = () => {
   };
 
   return (
-    <div className="h-full min-h-0 flex flex-col bg-app-bg text-app-text">
+    <div className="h-full max-h-screen min-h-0 flex flex-col bg-app-bg text-app-text overflow-hidden">
       {/* Шапка */}
-      <header className="flex-none flex items-center justify-between px-4 py-3 border-b border-app-border">
+      <header className="flex-none flex items-center justify-between px-4 py-3 border-b border-app-border shrink-0">
         <button
           onClick={() => navigate('/')}
           className="flex items-center gap-2 text-app-text-secondary hover:text-app-text transition-colors"
@@ -179,8 +179,8 @@ export const SettingsPage = () => {
       </header>
 
       {/* Контент */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
-        <div className="max-w-md mx-auto space-y-8">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-6">
+        <div className="max-w-md mx-auto space-y-8 pb-safe">
           {/* Профиль */}
           <section>
             <h2 className="text-xl font-bold mb-4">Профиль</h2>
