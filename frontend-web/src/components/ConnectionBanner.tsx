@@ -14,8 +14,9 @@ export const ConnectionBanner = () => {
 
   return (
     <div
-      className="px-2 py-px flex items-center justify-center gap-1 text-[9px] leading-none bg-amber-600/90 text-white shrink-0 h-[18px]"
+      className="fixed top-0 left-0 right-0 z-[9999] px-2 py-px flex items-center justify-center gap-1 text-[9px] leading-none bg-amber-600/90 text-white h-[18px]"
       role="alert"
+      style={{ height: '18px', minHeight: '18px', maxHeight: '18px' }}
     >
       {isReconnecting && (
         <svg className="w-2 h-2 animate-spin" fill="none" viewBox="0 0 24 24">
