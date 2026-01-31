@@ -515,6 +515,17 @@ export class MessagesService {
 
   /** Мягкое удаление нескольких сообщений (только свои) */
   async deleteMessages(messageIds: string[], userId: string) {
+    // Сначала получаем сообщения для WebSocket уведомлений
+    const messagesToDelete = await this.prisma.message.findMany({
+      where: {
+        id: { in: messageIds },
+        userId,
+        isDeleted: false,
+      },
+      select: { id: true, chatId: true },
+    });
+    
+    // Помечаем как удаленные
     const result = await this.prisma.message.updateMany({
       where: {
         id: { in: messageIds },
@@ -523,7 +534,8 @@ export class MessagesService {
       },
       data: { isDeleted: true, updatedAt: new Date() },
     });
-    return result.count;
+    
+    return { count: result.count, deletedMessages: messagesToDelete };
   }
 
   /** Удалить сообщение у всех (только автор, сообщение скрывается для всех) */

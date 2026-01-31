@@ -934,14 +934,17 @@ export const ChatPage = () => {
                 className="w-full px-4 py-2 text-left text-sm text-white hover:bg-white/10"
                 onClick={async (e) => {
                   e.stopPropagation();
-                  console.log('Удалить у меня - клик', contextMenu.message.id);
+                  const msgId = contextMenu.message.id;
+                  console.log('🗑️ Удалить у меня - клик', msgId);
                   try {
-                    await messagesService.deleteMessages([contextMenu.message.id]);
-                    setMessages((prev) => prev.filter((m) => m.id !== contextMenu.message.id));
-                    console.log('Удалено успешно');
-                  } catch (err) {
-                    console.error('Ошибка удаления:', err);
-                    alert('Не удалось удалить сообщение');
+                    const result = await messagesService.deleteMessages([msgId]);
+                    console.log('✅ API ответ:', result);
+                    setMessages((prev) => prev.filter((m) => m.id !== msgId));
+                    console.log('✅ Удалено локально');
+                  } catch (err: any) {
+                    console.error('❌ Ошибка удаления:', err);
+                    console.error('❌ Детали:', err?.response?.data || err?.message);
+                    alert('Не удалось удалить сообщение: ' + (err?.response?.data?.message || err?.message));
                   }
                   setContextMenu(null);
                 }}
@@ -953,14 +956,17 @@ export const ChatPage = () => {
                 className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-white/10"
                 onClick={async (e) => {
                   e.stopPropagation();
-                  console.log('Удалить у всех - клик', contextMenu.message.id);
+                  const msgId = contextMenu.message.id;
+                  console.log('🗑️ Удалить у всех - клик', msgId);
                   try {
-                    await messagesService.deleteForEveryone(contextMenu.message.id);
-                    setMessages((prev) => prev.filter((m) => m.id !== contextMenu.message.id));
-                    console.log('Удалено у всех успешно');
-                  } catch (err) {
-                    console.error('Ошибка удаления у всех:', err);
-                    alert('Не удалось удалить у всех');
+                    const result = await messagesService.deleteForEveryone(msgId);
+                    console.log('✅ API ответ:', result);
+                    setMessages((prev) => prev.filter((m) => m.id !== msgId));
+                    console.log('✅ Удалено локально');
+                  } catch (err: any) {
+                    console.error('❌ Ошибка удаления у всех:', err);
+                    console.error('❌ Детали:', err?.response?.data || err?.message);
+                    alert('Не удалось удалить у всех: ' + (err?.response?.data?.message || err?.message));
                   }
                   setContextMenu(null);
                 }}

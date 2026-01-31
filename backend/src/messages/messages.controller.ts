@@ -308,8 +308,16 @@ export class MessagesController {
   @Post('delete-many')
   async deleteMessages(@Body() body: { messageIds: string[] }, @CurrentUser() user: any) {
     const ids = Array.isArray(body.messageIds) ? body.messageIds : [];
-    const count = await this.messagesService.deleteMessages(ids, user.id);
-    return { deleted: count };
+    const result = await this.messagesService.deleteMessages(ids, user.id);
+    
+    // Отправляем WebSocket события для удаленных сообщений
+    if (result.deletedMessages && result.deletedMessages.length > 0) {
+      result.deletedMessages.forEach(msg => {
+        this.wsGateway.emitMessageDeleted(msg.chatId, msg.id);
+      });
+    }
+    
+    return { deleted: result.count };
   }
 
   @Post('delete-for-everyone')
