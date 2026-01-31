@@ -18,6 +18,8 @@ interface VideoCallProps {
   onAccepted?: () => void;
   /** Вызывается при завершении разговора: длительность (сек), chatId, видеозвонок */
   onCallEndWithStats?: (durationSeconds: number, chatId: string, isVideo: boolean) => void;
+  /** Автоматически принять входящий звонок (если пользователь уже кликнул "Принять" в глобальном оверлее) */
+  autoAccept?: boolean;
 }
 
 function formatDuration(totalSeconds: number): string {
@@ -37,7 +39,10 @@ export const VideoCall = ({
   onEnd,
   onAccepted,
   onCallEndWithStats,
+  autoAccept = false,
 }: VideoCallProps) => {
+  // Флаг: звонок уже был принят (либо через autoAccept, либо кликом по кнопке)
+  const [alreadyAccepted, setAlreadyAccepted] = useState(autoAccept);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isVideoEnabled, setIsVideoEnabled] = useState(videoMode);
@@ -160,10 +165,10 @@ export const VideoCall = ({
       }
     };
 
-    // Входящий звонок: не принимать автоматически — только по нажатию «Принять»
-    const isIncomingWaiting = isIncoming && offer;
+    // Входящий звонок: если уже принят (alreadyAccepted), автоматически начать соединение
+    const isIncomingWaiting = isIncoming && offer && !alreadyAccepted;
     if (!isIncomingWaiting) {
-      // Для caller user gesture уже есть (клик "Позвонить" в родительском компоненте)
+      // Для caller или уже принятого звонка user gesture уже есть
       userInteractedRef.current = true;
       acceptedOrConnectedRef.current = true;
       initializeCall();
@@ -188,7 +193,14 @@ export const VideoCall = ({
         webrtc.endCall();
       }
     };
-  }, [chatId, isIncoming, offer, socket, videoMode, onEnd, onCallEndWithStats]);
+  }, [chatId, isIncoming, offer, socket, videoMode, onEnd, onCallEndWithStats, alreadyAccepted]);
+
+  // Автоматически вызвать onAccepted при автоприёме
+  useEffect(() => {
+    if (autoAccept && onAccepted) {
+      onAccepted();
+    }
+  }, [autoAccept, onAccepted]);
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
@@ -442,39 +454,56 @@ export const VideoCall = ({
 
   if (isIncoming && !localStream) {
     return (
-      <div className="fixed inset-0 bg-[#0b0b0b] bg-opacity-95 flex items-center justify-center z-50">
-        <div className="bg-[#1c1c1e] rounded-2xl p-8 max-w-sm w-full mx-4 border border-white/10">
-          <p className="text-[#86868a] text-sm mb-1">{videoMode ? 'Входящий видеозвонок' : 'Входящий голосовой звонок'}</p>
-          <h2 className="text-xl font-semibold text-white mb-6">{contactName}</h2>
-          <div className="flex gap-3">
+      <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-app-surface rounded-2xl p-8 max-w-sm w-full border border-app-border shadow-2xl">
+          {/* Иконка */}
+          <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-app-accent/20 flex items-center justify-center animate-pulse">
+            {videoMode ? (
+              <svg className="w-10 h-10 text-app-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            ) : (
+              <svg className="w-10 h-10 text-app-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+            )}
+          </div>
+
+          {/* Текст */}
+          <div className="text-center mb-8">
+            <p className="text-app-text-secondary text-sm mb-2">
+              {videoMode ? 'Входящий видеозвонок' : 'Входящий голосовой звонок'}
+            </p>
+            <h2 className="text-2xl font-bold text-app-text">{contactName}</h2>
+          </div>
+
+          {/* Кнопки */}
+          <div className="flex gap-4">
+            {/* Принять - зелёная */}
             <button
-              onClick={async () => {
-                if (offer && webrtcServiceRef.current) {
-                  try {
-                    // Устанавливаем флаг user interaction для разблокировки autoplay
-                    userInteractedRef.current = true;
-                    acceptedOrConnectedRef.current = true;
-                    onAccepted?.();
-                    const stream = await webrtcServiceRef.current.handleOffer(chatId, offer, {
-                      video: videoMode,
-                      preCapturedStream: preCapturedStreamRef.current ?? undefined,
-                    });
-                    setLocalStream(stream);
-                    preCapturedStreamRef.current = null;
-                  } catch (error) {
-                    console.error('Ошибка принятия звонка:', error);
-                    acceptedOrConnectedRef.current = false;
-                  }
-                }
+              onClick={() => {
+                // Просто устанавливаем флаг, что звонок принят
+                // Это триггернет useEffect с initializeCall
+                userInteractedRef.current = true;
+                onAccepted?.();
+                setAlreadyAccepted(true);
               }}
-              className="flex-1 bg-green-600 hover:bg-green-500 text-white px-4 py-3 rounded-xl font-medium"
+              className="flex-1 bg-app-success hover:bg-app-success/80 text-white px-6 py-4 rounded-2xl font-semibold text-lg transition-all active:scale-95 shadow-lg flex items-center justify-center gap-2"
             >
+              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z" />
+              </svg>
               Принять
             </button>
+
+            {/* Отклонить - красная, ЗАМЕТНАЯ */}
             <button
               onClick={handleReject}
-              className="flex-1 bg-red-600 hover:bg-red-500 text-white px-4 py-3 rounded-xl font-medium"
+              className="flex-1 bg-app-error hover:bg-app-error/80 text-white px-6 py-4 rounded-2xl font-semibold text-lg transition-all active:scale-95 shadow-lg ring-4 ring-app-error/30 flex items-center justify-center gap-2"
             >
+              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.68-1.36-2.66-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z" />
+              </svg>
               Отклонить
             </button>
           </div>
@@ -492,8 +521,8 @@ export const VideoCall = ({
           {contactName.charAt(0).toUpperCase()}
         </div>
         <p className="text-white font-medium text-lg">{contactName}</p>
-        <p className="text-[#86868a] text-sm mt-1">
-          {noAnswer ? 'Собеседник не ответил' : connectionError ? 'Не удалось подключиться' : isConnecting ? 'Подключение...' : 'Голосовой звонок'}
+        <p className="text-app-text-secondary text-sm mt-1">
+          {noAnswer ? 'Собеседник не ответил' : connectionError ? 'Не удалось подключиться' : isConnecting ? (isIncoming ? 'Соединяемся...' : 'Звоним...') : 'Голосовой звонок'}
         </p>
         {localStream && !connectionError && !noAnswer && (
           <p className="text-[#0a84ff] font-mono text-xl mt-2 tabular-nums" aria-label="Длительность разговора">
@@ -582,9 +611,9 @@ export const VideoCall = ({
       <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
       <div className="flex-1 relative">
         {(isConnecting || connectionError || noAnswer) && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 gap-4">
-            <div className="text-white">
-              {noAnswer ? 'Собеседник не ответил' : connectionError ? 'Не удалось подключиться' : 'Подключение...'}
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/95 backdrop-blur-sm gap-4">
+            <div className="text-white text-xl font-semibold">
+              {noAnswer ? 'Собеседник не ответил' : connectionError ? 'Не удалось подключиться' : (isIncoming ? 'Соединяемся...' : 'Звоним...')}
             </div>
             {(connectionError || noAnswer) && (
               <p className="text-gray-400 text-sm text-center max-w-xs">

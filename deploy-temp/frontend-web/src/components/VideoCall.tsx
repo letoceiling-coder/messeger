@@ -1,0 +1,752 @@
+import { useEffect, useState, useRef } from 'react';
+import { WebRTCService } from '../services/webrtc.service';
+import { webrtcLogService } from '../services/webrtc-log.service';
+import { useWebSocket } from '../contexts/WebSocketContext';
+import { soundService } from '../services/sound.service';
+
+interface VideoCallProps {
+  chatId: string;
+  isIncoming: boolean;
+  callerId?: string;
+  offer?: RTCSessionDescriptionInit;
+  /** false = только голос (без видео) */
+  videoMode?: boolean;
+  /** Имя контакта для отображения */
+  contactName?: string;
+  onEnd: () => void;
+  /** Вызывается при принятии входящего звонка (остановить мелодию) */
+  onAccepted?: () => void;
+  /** Вызывается при завершении разговора: длительность (сек), chatId, видеозвонок */
+  onCallEndWithStats?: (durationSeconds: number, chatId: string, isVideo: boolean) => void;
+}
+
+function formatDuration(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
+export const VideoCall = ({
+  chatId,
+  isIncoming,
+  offer,
+  videoMode = true,
+  contactName = 'Собеседник',
+  onEnd,
+  onAccepted,
+  onCallEndWithStats,
+}: VideoCallProps) => {
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [isVideoEnabled, setIsVideoEnabled] = useState(videoMode);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
+  const [isConnecting, setIsConnecting] = useState(true);
+  const [connectionError, setConnectionError] = useState(false);
+  const [noAnswer, setNoAnswer] = useState(false);
+  const [callDurationSeconds, setCallDurationSeconds] = useState(0);
+  const [showLogs, setShowLogs] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [logLines, setLogLines] = useState<string[]>([]);
+  const [, setDiagnosticsTick] = useState(0);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const originalCameraTrackRef = useRef<MediaStreamTrack | null>(null);
+  const callDurationRef = useRef(0);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
+  const webrtcServiceRef = useRef<WebRTCService | null>(null);
+  const acceptedOrConnectedRef = useRef(false);
+  const preCapturedStreamRef = useRef<MediaStream | null>(null);
+  const userInteractedRef = useRef(false);
+  const { socket } = useWebSocket();
+
+  callDurationRef.current = callDurationSeconds;
+
+  // Рингтон для инициатора звонка (ждет ответа) - ton.mp3
+  useEffect(() => {
+    if (!isIncoming && isConnecting) {
+      // Для инициатора: начать воспроизведение рингтона (ton.mp3)
+      soundService.playOutgoingRingtone();
+    }
+    return () => {
+      // Остановить рингтон при размонтировании или подключении
+      soundService.stopRingtone();
+    };
+  }, [isIncoming, isConnecting]);
+
+  // Остановить рингтон при установке соединения (remoteStream появился)
+  useEffect(() => {
+    if (remoteStream && !isIncoming) {
+      soundService.stopRingtone();
+    }
+  }, [remoteStream, isIncoming]);
+
+  // Предзапрос медиа при входящем звонке — answer уходит быстрее после «Принять» (раньше работало при авто-принятии)
+  useEffect(() => {
+    if (!isIncoming || !offer || !chatId) return;
+    let cancelled = false;
+    navigator.mediaDevices
+      ?.getUserMedia({
+        audio: true,
+        video: videoMode ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } : false,
+      })
+      .then((stream) => {
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        if (preCapturedStreamRef.current) preCapturedStreamRef.current.getTracks().forEach((t) => t.stop());
+        preCapturedStreamRef.current = stream;
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (preCapturedStreamRef.current) {
+        preCapturedStreamRef.current.getTracks().forEach((t) => t.stop());
+        preCapturedStreamRef.current = null;
+      }
+    };
+  }, [isIncoming, offer, chatId, videoMode]);
+
+  useEffect(() => {
+    webrtcLogService.clear();
+    const webrtc = new WebRTCService(socket);
+    webrtcServiceRef.current = webrtc;
+    acceptedOrConnectedRef.current = false;
+
+    webrtc.onRemoteStream((stream) => {
+      webrtcLogService.add(`onRemoteStream callback: tracks=${stream.getTracks().length}, userInteracted=${userInteractedRef.current}`);
+      setRemoteStream(stream);
+      setIsConnecting(false);
+      setConnectionError(false);
+    });
+
+    webrtc.onCallEnd(() => {
+      soundService.stopRingtone();
+      onCallEndWithStats?.(callDurationRef.current, chatId, videoMode);
+      onEnd();
+    });
+
+    webrtc.onConnectionFailed(() => {
+      soundService.stopRingtone();
+      setIsConnecting(false);
+      setConnectionError(true);
+    });
+
+    webrtc.onNoAnswer(() => {
+      soundService.stopRingtone();
+      setIsConnecting(false);
+      setNoAnswer(true);
+    });
+
+    const initializeCall = async () => {
+      try {
+        const opts = { video: videoMode, preCapturedStream: preCapturedStreamRef.current ?? undefined };
+        let stream: MediaStream;
+        if (isIncoming && offer) {
+          stream = await webrtc.handleOffer(chatId, offer, opts);
+        } else {
+          stream = await webrtc.initiateCall(chatId, opts);
+        }
+        acceptedOrConnectedRef.current = true;
+        setLocalStream(stream);
+      } catch (error: unknown) {
+        const err = error as { message?: string };
+        console.error('Ошибка инициализации звонка:', err);
+        alert(err?.message || (videoMode ? 'Не удалось начать видеозвонок' : 'Не удалось начать голосовой звонок'));
+        onEnd();
+      }
+    };
+
+    // Входящий звонок: не принимать автоматически — только по нажатию «Принять»
+    const isIncomingWaiting = isIncoming && offer;
+    if (!isIncomingWaiting) {
+      // Для caller user gesture уже есть (клик "Позвонить" в родительском компоненте)
+      userInteractedRef.current = true;
+      acceptedOrConnectedRef.current = true;
+      initializeCall();
+    }
+
+    const timeout = isIncomingWaiting ? null : setTimeout(() => {
+      setIsConnecting((prev) => {
+        if (prev) setConnectionError(true);
+        return false;
+      });
+    }, 28000);
+
+    return () => {
+      // Остановить screen sharing при завершении звонка
+      if (isScreenSharing) {
+        setIsScreenSharing(false);
+      }
+      if (timeout) clearTimeout(timeout);
+      if (isIncomingWaiting && !acceptedOrConnectedRef.current) {
+        webrtc.rejectCall(chatId);
+      } else {
+        webrtc.endCall();
+      }
+    };
+  }, [chatId, isIncoming, offer, socket, videoMode, onEnd, onCallEndWithStats]);
+
+  useEffect(() => {
+    if (localVideoRef.current && localStream) {
+      localVideoRef.current.srcObject = localStream;
+    }
+    // Дополнительная попытка play() для remote video/audio когда localStream установлен (звонок активен)
+    if (localStream && remoteStream) {
+      setTimeout(() => {
+        if (remoteVideoRef.current) remoteVideoRef.current.play().catch(() => {});
+        if (remoteAudioRef.current) remoteAudioRef.current.play().catch(() => {});
+      }, 500);
+    }
+  }, [localStream, remoteStream]);
+
+  useEffect(() => {
+    if (!remoteVideoRef.current || !remoteStream) return;
+    const el = remoteVideoRef.current;
+    el.srcObject = remoteStream;
+    const hasVideo = remoteStream.getVideoTracks().length > 0;
+    webrtcLogService.add(`Auto-play video: userInteracted=${userInteractedRef.current}, hasVideo=${hasVideo}`);
+    const play = () => {
+      // Проверяем, был ли user interaction
+      if (userInteractedRef.current) {
+        webrtcLogService.add('Attempting video.play()...');
+        el.play()
+          .then(() => webrtcLogService.add('video.play() SUCCESS'))
+          .catch((err) => webrtcLogService.add(`video.play() BLOCKED: ${err.message || err}`));
+      } else {
+        webrtcLogService.add('video.play() skipped: no user interaction yet');
+      }
+    };
+    play();
+    const t1 = setTimeout(play, 100);
+    const t2 = setTimeout(play, 300);
+    const t3 = setTimeout(play, 800);
+    const t4 = setTimeout(play, 1500);
+    // На мобильных (ответчик) видео часто появляется с задержкой — несколько попыток play
+    const t5 = hasVideo ? setTimeout(play, 2500) : null;
+    const t6 = hasVideo ? setTimeout(play, 4000) : null;
+    const interval = hasVideo ? setInterval(play, 500) : null;
+    const stopInterval = hasVideo ? setTimeout(() => { if (interval) clearInterval(interval); }, 5000) : null;
+    const onAddTrack = () => {
+      webrtcLogService.add('video onaddtrack');
+      play();
+      if (remoteStream?.getVideoTracks().length) play();
+    };
+    remoteStream.onaddtrack = onAddTrack;
+    return () => {
+      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
+      if (t5) clearTimeout(t5); if (t6) clearTimeout(t6);
+      if (interval) clearInterval(interval); if (stopInterval) clearTimeout(stopInterval);
+      remoteStream.onaddtrack = null;
+    };
+  }, [remoteStream, localStream]);
+
+  // Удалённый звук: в видеорежиме на мобильных <video> часто не даёт звук — используем отдельный <audio>
+  useEffect(() => {
+    if (!remoteAudioRef.current || !remoteStream) return;
+    const el = remoteAudioRef.current;
+    el.srcObject = remoteStream;
+    webrtcLogService.add(`Auto-play audio: userInteracted=${userInteractedRef.current}`);
+    const play = () => {
+      // Проверяем, был ли user interaction
+      if (userInteractedRef.current) {
+        webrtcLogService.add('Attempting audio.play()...');
+        el.play()
+          .then(() => webrtcLogService.add('audio.play() SUCCESS'))
+          .catch((err) => webrtcLogService.add(`audio.play() BLOCKED: ${err.message || err}`));
+      } else {
+        webrtcLogService.add('audio.play() skipped: no user interaction yet');
+      }
+    };
+    // Несколько попыток play() для обхода autoplay политики браузера на ПК
+    play();
+    const t1 = setTimeout(play, 100);
+    const t2 = setTimeout(play, 300);
+    const t3 = setTimeout(play, 800);
+    const t4 = setTimeout(play, 1500);
+    const t5 = setTimeout(play, 2500);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
+      clearTimeout(t5);
+    };
+  }, [remoteStream, localStream]);
+
+  const callStartTimeRef = useRef<number | null>(null);
+  // Таймер длительности разговора (старт при установленном соединении)
+  useEffect(() => {
+    const active = localStream && !connectionError && !noAnswer;
+    if (!active) {
+      callStartTimeRef.current = null;
+      return;
+    }
+    if (callStartTimeRef.current == null) callStartTimeRef.current = Date.now();
+    const tick = () => {
+      if (callStartTimeRef.current == null) return;
+      setCallDurationSeconds(Math.floor((Date.now() - callStartTimeRef.current) / 1000));
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [localStream, connectionError, noAnswer]);
+
+  useEffect(() => {
+    if (!showLogs) return;
+    setLogLines(webrtcLogService.getLogs());
+    const unsub = webrtcLogService.subscribe(() => setLogLines(webrtcLogService.getLogs()));
+    return unsub;
+  }, [showLogs]);
+
+  const formatTrackInfo = (stream: MediaStream | null) => {
+    if (!stream) return '—';
+    return stream.getTracks().map((t) => `${t.kind} ${t.enabled ? 'on' : 'off'} ${t.muted ? 'muted' : ''} ${t.readyState}`).join(', ') || 'нет треков';
+  };
+
+  const refreshDiagnostics = () => setDiagnosticsTick((n) => n + 1);
+  const connectionInfo = webrtcServiceRef.current?.getConnectionInfo() ?? null;
+
+  const handleForcePlay = () => {
+    if (remoteStream) {
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.play().catch(() => {});
+      }
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        remoteAudioRef.current.play().catch(() => {});
+      }
+    }
+    webrtcLogService.add('Force play (remote video/audio)');
+  };
+
+  const handleCopyLogs = () => {
+    const text = webrtcLogService.getLogs().join('\n');
+    navigator.clipboard?.writeText(text).then(() => alert('Логи скопированы')).catch(() => alert('Не удалось скопировать'));
+  };
+
+  const handleEndCall = () => {
+    onCallEndWithStats?.(callDurationRef.current, chatId, videoMode);
+    if (webrtcServiceRef.current) {
+      webrtcServiceRef.current.endCall();
+    }
+    onEnd();
+  };
+
+  const handleToggleVideo = () => {
+    if (!videoMode) return;
+    if (webrtcServiceRef.current) {
+      webrtcServiceRef.current.toggleVideo();
+      setIsVideoEnabled(!isVideoEnabled);
+    }
+  };
+
+  const handleToggleAudio = () => {
+    if (webrtcServiceRef.current) {
+      webrtcServiceRef.current.toggleAudio();
+      setIsAudioEnabled(!isAudioEnabled);
+    }
+  };
+
+  const handleToggleScreenShare = async () => {
+    if (!videoMode) return; // Screen sharing only in video mode
+    
+    if (isScreenSharing) {
+      // Остановить демонстрацию экрана и вернуть камеру
+      await stopScreenShare();
+    } else {
+      // Начать демонстрацию экрана
+      await startScreenShare();
+    }
+  };
+
+  const startScreenShare = async () => {
+    try {
+      if (!webrtcServiceRef.current || !localStream) {
+        throw new Error('WebRTC service or local stream not available');
+      }
+
+      // Получить поток экрана
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          cursor: 'always',
+        } as MediaTrackConstraints,
+        audio: false,
+      });
+
+      const screenTrack = screenStream.getVideoTracks()[0];
+      if (!screenTrack) {
+        throw new Error('No screen video track available');
+      }
+
+      // Сохранить оригинальный трек камеры
+      const cameraTrack = localStream.getVideoTracks()[0];
+      if (cameraTrack) {
+        originalCameraTrackRef.current = cameraTrack;
+      }
+
+      // Заменить видеотрек на трек экрана
+      await webrtcServiceRef.current.replaceVideoTrack(screenTrack);
+      setIsScreenSharing(true);
+      webrtcLogService.add('Screen sharing started');
+
+      // Обработать остановку через браузер
+      screenTrack.onended = () => {
+        stopScreenShare().catch(console.error);
+      };
+    } catch (error) {
+      console.error('Error starting screen share:', error);
+      webrtcLogService.add(`Screen share error: ${error}`);
+    }
+  };
+
+  const stopScreenShare = async () => {
+    try {
+      if (!webrtcServiceRef.current || !originalCameraTrackRef.current) {
+        setIsScreenSharing(false);
+        return;
+      }
+
+      // Получить новый поток с камеры
+      const cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      });
+
+      const newCameraTrack = cameraStream.getVideoTracks()[0];
+      if (!newCameraTrack) {
+        throw new Error('Failed to get camera track');
+      }
+
+      // Заменить трек экрана обратно на камеру
+      await webrtcServiceRef.current.replaceVideoTrack(newCameraTrack);
+      setIsScreenSharing(false);
+      originalCameraTrackRef.current = null;
+      webrtcLogService.add('Screen sharing stopped, camera restored');
+    } catch (error) {
+      console.error('Error stopping screen share:', error);
+      webrtcLogService.add(`Stop screen share error: ${error}`);
+      setIsScreenSharing(false);
+    }
+  };
+
+  const handleReject = () => {
+    if (webrtcServiceRef.current && chatId) {
+      webrtcServiceRef.current.rejectCall(chatId);
+    }
+    onEnd();
+  };
+
+  if (isIncoming && !localStream) {
+    return (
+      <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-app-surface rounded-2xl p-8 max-w-sm w-full border border-app-border shadow-2xl">
+          {/* Иконка */}
+          <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-app-accent/20 flex items-center justify-center animate-pulse">
+            {videoMode ? (
+              <svg className="w-10 h-10 text-app-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            ) : (
+              <svg className="w-10 h-10 text-app-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+            )}
+          </div>
+
+          {/* Текст */}
+          <div className="text-center mb-8">
+            <p className="text-app-text-secondary text-sm mb-2">
+              {videoMode ? 'Входящий видеозвонок' : 'Входящий голосовой звонок'}
+            </p>
+            <h2 className="text-2xl font-bold text-app-text">{contactName}</h2>
+          </div>
+
+          {/* Кнопки */}
+          <div className="flex gap-4">
+            {/* Принять - зелёная */}
+            <button
+              onClick={async () => {
+                if (offer && webrtcServiceRef.current) {
+                  try {
+                    // Устанавливаем флаг user interaction для разблокировки autoplay
+                    userInteractedRef.current = true;
+                    acceptedOrConnectedRef.current = true;
+                    onAccepted?.();
+                    const stream = await webrtcServiceRef.current.handleOffer(chatId, offer, {
+                      video: videoMode,
+                      preCapturedStream: preCapturedStreamRef.current ?? undefined,
+                    });
+                    setLocalStream(stream);
+                    preCapturedStreamRef.current = null;
+                  } catch (error) {
+                    console.error('Ошибка принятия звонка:', error);
+                    acceptedOrConnectedRef.current = false;
+                  }
+                }
+              }}
+              className="flex-1 bg-app-success hover:bg-app-success/80 text-white px-6 py-4 rounded-2xl font-semibold text-lg transition-all active:scale-95 shadow-lg flex items-center justify-center gap-2"
+            >
+              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z" />
+              </svg>
+              Принять
+            </button>
+
+            {/* Отклонить - красная, ЗАМЕТНАЯ */}
+            <button
+              onClick={handleReject}
+              className="flex-1 bg-app-error hover:bg-app-error/80 text-white px-6 py-4 rounded-2xl font-semibold text-lg transition-all active:scale-95 shadow-lg ring-4 ring-app-error/30 flex items-center justify-center gap-2"
+            >
+              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.68-1.36-2.66-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z" />
+              </svg>
+              Отклонить
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Голосовой звонок — компактный экран без видео (обязательно <audio> для удалённого голоса)
+  if (!videoMode) {
+    return (
+      <div className="fixed inset-0 bg-[#0b0b0b] z-50 flex flex-col items-center justify-center">
+        <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
+        <div className="w-24 h-24 rounded-full bg-[#2d2d2f] flex items-center justify-center text-4xl text-[#0a84ff] mb-6">
+          {contactName.charAt(0).toUpperCase()}
+        </div>
+        <p className="text-white font-medium text-lg">{contactName}</p>
+        <p className="text-app-text-secondary text-sm mt-1">
+          {noAnswer ? 'Собеседник не ответил' : connectionError ? 'Не удалось подключиться' : isConnecting ? (isIncoming ? 'Соединяемся...' : 'Звоним...') : 'Голосовой звонок'}
+        </p>
+        {localStream && !connectionError && !noAnswer && (
+          <p className="text-[#0a84ff] font-mono text-xl mt-2 tabular-nums" aria-label="Длительность разговора">
+            {formatDuration(callDurationSeconds)}
+          </p>
+        )}
+        {(connectionError || noAnswer) && (
+          <p className="text-[#86868a] text-xs mt-2 max-w-xs text-center">
+            {noAnswer ? 'Собеседник не ответил на звонок.' : 'Собеседник не ответил или проблема с сетью. Попробуйте позже.'}
+          </p>
+        )}
+        {(connectionError || noAnswer) && (
+          <div className="flex gap-3 mt-4">
+            <button type="button" onClick={() => setShowLogs(true)} className="px-4 py-2 rounded-xl bg-[#2d2d2f] text-white">
+              📋 Логи
+            </button>
+            <button onClick={onEnd} className="px-6 py-2 rounded-xl bg-[#2d2d2f] text-white hover:bg-[#3d3d3f]">
+              Закрыть
+            </button>
+          </div>
+        )}
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 flex gap-4">
+          <button
+            onClick={handleToggleAudio}
+            className={`p-4 rounded-full ${isAudioEnabled ? 'bg-[#2d2d2f]' : 'bg-red-600'} text-white hover:opacity-90`}
+            title={isAudioEnabled ? 'Выключить микрофон' : 'Включить микрофон'}
+          >
+            {isAudioEnabled ? (
+              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z" /></svg>
+            ) : (
+              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z" /></svg>
+            )}
+          </button>
+          <button
+            onClick={handleEndCall}
+            className="p-4 rounded-full bg-red-600 text-white hover:bg-red-500"
+            title="Завершить"
+          >
+            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.81-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 01-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .27-.11.52-.29.7l-2.31 2.31c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28a11.27 11.27 0 00-2.66-1.81.996.996 0 01-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z" /></svg>
+          </button>
+          <button type="button" onClick={() => setShowLogs((v) => !v)} className="p-3 rounded-full bg-[#2d2d2f] text-white text-xs">
+            📋 Логи
+          </button>
+          <button type="button" onClick={() => { setShowDiagnostics((v) => !v); if (!showDiagnostics) refreshDiagnostics(); }} className="p-3 rounded-full bg-[#2d2d2f] text-white text-xs">
+            📊 Потоки
+          </button>
+          <button type="button" onClick={handleForcePlay} className="p-3 rounded-full bg-[#2d2d2f] text-white text-xs" title="Принудительно play удалённый звук">
+            ▶ Play
+          </button>
+        </div>
+        {showDiagnostics && (
+          <div className="absolute inset-x-0 bottom-32 left-0 right-0 bg-black/90 text-green-400 p-4 max-h-[40vh] overflow-auto flex flex-col gap-2 z-[60] text-xs font-mono">
+            <div className="flex justify-between items-center">
+              <span className="text-white font-medium">Диагностика потоков</span>
+              <div className="flex gap-2">
+                <button type="button" onClick={refreshDiagnostics} className="px-2 py-1 rounded bg-gray-600 text-white">Обновить</button>
+                <button type="button" onClick={() => setShowDiagnostics(false)} className="px-2 py-1 rounded bg-gray-600 text-white">Закрыть</button>
+              </div>
+            </div>
+            <div><span className="text-gray-400">Соединение:</span> {connectionInfo ? `${connectionInfo.connectionState} / ICE: ${connectionInfo.iceConnectionState}` : '—'}</div>
+            <div><span className="text-gray-400">Локальный поток:</span> {formatTrackInfo(localStream)}</div>
+            <div><span className="text-gray-400">Удалённый поток:</span> {formatTrackInfo(remoteStream)}</div>
+            <div><span className="text-gray-400">Удалённый звук (audio):</span> {remoteAudioRef.current ? (remoteAudioRef.current.srcObject ? 'srcObject есть' : 'srcObject нет') : '—'}</div>
+          </div>
+        )}
+        {showLogs && (
+          <div className="absolute inset-x-0 bottom-0 top-1/3 bg-black/95 text-green-400 p-4 flex flex-col z-[60]">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-white text-sm">Логи WebRTC</span>
+              <div className="flex gap-2">
+                <button type="button" onClick={handleCopyLogs} className="px-3 py-1.5 rounded bg-gray-600 text-white text-xs">Скопировать</button>
+                <button type="button" onClick={() => setShowLogs(false)} className="px-3 py-1.5 rounded bg-gray-600 text-white text-xs">Закрыть</button>
+              </div>
+            </div>
+            <pre className="flex-1 overflow-auto text-xs whitespace-pre-wrap break-all font-mono">
+              {logLines.length ? logLines.join('\n') : 'Пока нет записей.'}
+            </pre>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black z-50 flex flex-col">
+      <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
+      <div className="flex-1 relative">
+        {(isConnecting || connectionError || noAnswer) && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/95 backdrop-blur-sm gap-4">
+            <div className="text-white text-xl font-semibold">
+              {noAnswer ? 'Собеседник не ответил' : connectionError ? 'Не удалось подключиться' : (isIncoming ? 'Соединяемся...' : 'Звоним...')}
+            </div>
+            {(connectionError || noAnswer) && (
+              <p className="text-gray-400 text-sm text-center max-w-xs">
+                {noAnswer ? 'Собеседник не ответил на звонок.' : 'Не удалось установить связь. Возможные причины: собеседник не ответил, проблемы с сетью или файрволом. Обновите страницу и попробуйте снова.'}
+              </p>
+            )}
+            {(connectionError || noAnswer) && (
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setShowLogs(true); }}
+                  className="px-4 py-2 rounded-xl bg-gray-600 text-white"
+                >
+                  📋 Логи
+                </button>
+                <button
+                  onClick={onEnd}
+                  className="px-6 py-2 rounded-xl bg-red-600 text-white hover:bg-red-500"
+                >
+                  Закрыть
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        {/* Без key — иначе при добавлении треков элемент пересоздаётся и на телефоне теряется srcObject */}
+        <video
+          ref={remoteVideoRef}
+          autoPlay
+          playsInline
+          muted={!remoteStream}
+          className="w-full h-full object-cover"
+        />
+        {localStream && !connectionError && !noAnswer && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+            <div className="bg-black/60 text-white font-mono text-lg px-4 py-2 rounded-lg tabular-nums" aria-label="Длительность разговора">
+              {formatDuration(callDurationSeconds)}
+            </div>
+            {isScreenSharing && (
+              <div className="bg-blue-600/90 text-white text-sm px-4 py-2 rounded-lg flex items-center gap-2 animate-pulse">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z" />
+                </svg>
+                <span>Демонстрация экрана активна</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {/* Видеокружок — локальное видео в круге */}
+      <div className="absolute bottom-24 right-4 w-28 h-28 rounded-full overflow-hidden border-2 border-white shadow-lg ring-2 ring-black/30">
+        <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+      </div>
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-4 items-center">
+        <button onClick={handleToggleVideo} className={`p-4 rounded-full ${isVideoEnabled ? 'bg-gray-700' : 'bg-red-600'} text-white hover:bg-gray-600`} title={isVideoEnabled ? 'Выключить камеру' : 'Включить камеру'}>
+          {isVideoEnabled ? '📹' : '📵'}
+        </button>
+        <button onClick={handleToggleAudio} className={`p-4 rounded-full ${isAudioEnabled ? 'bg-gray-700' : 'bg-red-600'} text-white hover:bg-gray-600`} title={isAudioEnabled ? 'Выключить микрофон' : 'Включить микрофон'}>
+          {isAudioEnabled ? '🎤' : '🔇'}
+        </button>
+        <button 
+          onClick={handleToggleScreenShare} 
+          className={`p-4 rounded-full ${isScreenSharing ? 'bg-blue-600 ring-2 ring-blue-400' : 'bg-gray-700'} text-white hover:opacity-90 transition-all`}
+          title={isScreenSharing ? 'Остановить демонстрацию экрана' : 'Показать экран'}
+        >
+          <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+            {isScreenSharing ? (
+              <path d="M21 3H3c-1.11 0-2 .89-2 2v12c0 1.1.89 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.11-.9-2-2-2zm0 14H3V5h18v12zm-10-7h2v6h2l-3 3-3-3h2v-6z" />
+            ) : (
+              <path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z" />
+            )}
+          </svg>
+        </button>
+        <button onClick={handleEndCall} className="p-4 rounded-full bg-red-600 text-white hover:bg-red-700" title="Завершить звонок">📞</button>
+        <button
+          type="button"
+          onClick={() => setShowLogs((v) => !v)}
+          className="p-3 rounded-full bg-gray-700/80 text-white text-sm"
+          title="Логи звонка"
+        >
+          📋 Логи
+        </button>
+        <button
+          type="button"
+          onClick={() => { setShowDiagnostics((v) => !v); if (!showDiagnostics) refreshDiagnostics(); }}
+          className="p-3 rounded-full bg-gray-700/80 text-white text-sm"
+          title="Потоки и состояние соединения"
+        >
+          📊 Потоки
+        </button>
+        <button
+          type="button"
+          onClick={handleForcePlay}
+          className="p-3 rounded-full bg-gray-700/80 text-white text-sm"
+          title="Принудительно воспроизвести удалённое видео/звук"
+        >
+          ▶ Play
+        </button>
+      </div>
+      {showDiagnostics && (
+        <div className="absolute inset-x-0 bottom-24 left-0 right-0 bg-black/90 text-green-400 p-4 max-h-[50vh] overflow-auto flex flex-col gap-2 z-[55] text-sm font-mono">
+          <div className="flex justify-between items-center">
+            <span className="text-white font-medium">Диагностика потоков</span>
+            <div className="flex gap-2">
+              <button type="button" onClick={refreshDiagnostics} className="px-2 py-1 rounded bg-gray-600 text-white text-xs">Обновить</button>
+              <button type="button" onClick={() => setShowDiagnostics(false)} className="px-2 py-1 rounded bg-gray-600 text-white text-xs">Закрыть</button>
+            </div>
+          </div>
+          <div><span className="text-gray-400">Соединение:</span> {connectionInfo ? `${connectionInfo.connectionState} / ICE: ${connectionInfo.iceConnectionState}` : '—'}</div>
+          <div><span className="text-gray-400">Локальный поток:</span> {formatTrackInfo(localStream)}</div>
+          <div><span className="text-gray-400">Удалённый поток:</span> {formatTrackInfo(remoteStream)}</div>
+          <div><span className="text-gray-400">Удалённое видео:</span> {remoteVideoRef.current ? (remoteVideoRef.current.srcObject ? 'srcObject есть' : 'srcObject нет') : '—'}</div>
+          <div><span className="text-gray-400">Удалённый звук:</span> {remoteAudioRef.current ? (remoteAudioRef.current.srcObject ? 'srcObject есть' : 'srcObject нет') : '—'}</div>
+        </div>
+      )}
+      {showLogs && (
+        <div className="absolute inset-0 top-auto bg-black/95 text-green-400 p-4 max-h-[60vh] flex flex-col z-[60]">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-white text-sm font-medium">Логи WebRTC</span>
+            <div className="flex gap-2">
+              <button type="button" onClick={handleCopyLogs} className="px-3 py-1.5 rounded bg-gray-600 text-white text-xs">
+                Скопировать
+              </button>
+              <button type="button" onClick={() => setShowLogs(false)} className="px-3 py-1.5 rounded bg-gray-600 text-white text-xs">
+                Закрыть
+              </button>
+            </div>
+          </div>
+          <pre className="flex-1 overflow-auto text-xs whitespace-pre-wrap break-all font-mono">
+            {logLines.length ? logLines.join('\n') : 'Пока нет записей. Совершите действие в звонке.'}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+};

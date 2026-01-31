@@ -37,3 +37,6 @@ backend/prisma/*.db-journal
 # Misc
 *.tgz
 .cache/
+
+# SSH and credentials (DO NOT COMMIT)
+SSH_ACCESS.md
