@@ -1,5 +1,6 @@
 // Service Worker для автоматического обновления кеша
-const CACHE_VERSION = 'v-' + Date.now();
+// Версия будет обновляться автоматически при сборке через Vite
+const CACHE_VERSION = '__BUILD_ID__'; // Заменяется при сборке
 const CACHE_NAME = 'messager-cache-' + CACHE_VERSION;
 
 // При установке нового Service Worker - очистить старый кеш
