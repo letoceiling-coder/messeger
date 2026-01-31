@@ -179,10 +179,21 @@ export const VoiceRecorder = ({ chatId, onSent }: VoiceRecorderProps) => {
               <span className="text-sm font-medium text-app-error">{formatTime(recordingTime)}</span>
             </div>
             
-            {/* Подсказка о свайпе */}
-            <span className="text-xs text-app-text-secondary">
-              ← Свайп для отмены
-            </span>
+            {/* Кнопка остановить */}
+            <button
+              onClick={stopRecording}
+              className="ml-auto px-4 py-2 bg-app-accent text-white rounded-xl hover:bg-app-accent-hover text-sm font-medium transition-colors"
+            >
+              Остановить
+            </button>
+            
+            {/* Кнопка отмены */}
+            <button
+              onClick={cancelRecording}
+              className="px-4 py-2 bg-app-surface-hover text-app-text-secondary rounded-xl hover:bg-app-surface text-sm transition-colors"
+            >
+              Отмена
+            </button>
           </div>
           
           {/* Индикатор прогресса свайпа */}
@@ -194,6 +205,11 @@ export const VoiceRecorder = ({ chatId, onSent }: VoiceRecorderProps) => {
               />
             </div>
           )}
+          
+          {/* Подсказка о свайпе (под кнопками) */}
+          <span className="text-xs text-app-text-secondary text-center">
+            Свайп влево для отмены записи
+          </span>
         </div>
       )}
       {expanded === 'preview' && (
