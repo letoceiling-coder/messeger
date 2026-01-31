@@ -890,7 +890,9 @@ export const ChatPage = () => {
           <button
             type="button"
             className="w-full px-4 py-2 text-left text-sm text-white hover:bg-white/10"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
+              console.log('Ответить - клик');
               setReplyingTo(contextMenu.message);
               setContextMenu(null);
             }}
@@ -902,11 +904,15 @@ export const ChatPage = () => {
               <button
                 type="button"
                 className="w-full px-4 py-2 text-left text-sm text-white hover:bg-white/10"
-                onClick={async () => {
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  console.log('Удалить у меня - клик', contextMenu.message.id);
                   try {
                     await messagesService.deleteMessages([contextMenu.message.id]);
                     setMessages((prev) => prev.filter((m) => m.id !== contextMenu.message.id));
-                  } catch {
+                    console.log('Удалено успешно');
+                  } catch (err) {
+                    console.error('Ошибка удаления:', err);
                     alert('Не удалось удалить сообщение');
                   }
                   setContextMenu(null);
@@ -917,11 +923,15 @@ export const ChatPage = () => {
               <button
                 type="button"
                 className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-white/10"
-                onClick={async () => {
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  console.log('Удалить у всех - клик', contextMenu.message.id);
                   try {
                     await messagesService.deleteForEveryone(contextMenu.message.id);
                     setMessages((prev) => prev.filter((m) => m.id !== contextMenu.message.id));
-                  } catch {
+                    console.log('Удалено у всех успешно');
+                  } catch (err) {
+                    console.error('Ошибка удаления у всех:', err);
                     alert('Не удалось удалить у всех');
                   }
                   setContextMenu(null);
@@ -934,7 +944,9 @@ export const ChatPage = () => {
           <button
             type="button"
             className="w-full px-4 py-2 text-left text-sm text-white hover:bg-white/10"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
+              console.log('Переслать - клик');
               setForwardMessageToSend(contextMenu.message);
               setContextMenu(null);
             }}
