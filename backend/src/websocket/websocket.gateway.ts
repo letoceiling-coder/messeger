@@ -51,6 +51,8 @@ export class MessagerWebSocketGateway
   private callNoAnswerTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Кэш ранних ICE кандидатов (пришли до call:initiate/answer) */
   private pendingIceCandidates = new Map<string, Array<{ candidate: any; fromUserId: string }>>();
+  /** Пользователи, которые сейчас на звонке: userId -> chatId */
+  private usersInCall = new Map<string, string>();
 
   constructor(
     private jwtService: JwtService,
@@ -147,6 +149,34 @@ export class MessagerWebSocketGateway
     }
 
     const userId = client.userId;
+
+    // Проверка, был ли пользователь на звонке
+    const chatId = this.usersInCall.get(userId);
+    if (chatId) {
+      const callInfo = this.activeCalls.get(chatId);
+      if (callInfo) {
+        // Определение собеседника
+        const otherUserId =
+          callInfo.callerId === userId ? callInfo.receiverId : callInfo.callerId;
+        const otherSocketId = this.connectedUsers.get(otherUserId);
+
+        // Уведомление собеседника о разрыве соединения
+        if (otherSocketId) {
+          this.server.to(otherSocketId).emit('call:end', {
+            chatId,
+            reason: 'connection_lost',
+          });
+        }
+
+        // Очистка данных о звонке
+        this.activeCalls.delete(chatId);
+        this.usersInCall.delete(callInfo.callerId);
+        this.usersInCall.delete(callInfo.receiverId);
+        this.clearCallNoAnswerTimer(chatId);
+
+        this.logger.log(`Call ended due to disconnect: ${chatId} (user: ${userId})`);
+      }
+    }
 
     // Удаление из connectedUsers
     this.connectedUsers.delete(userId);
@@ -545,6 +575,30 @@ export class MessagerWebSocketGateway
         return;
       }
 
+      // Проверка, что получатель не занят другим звонком
+      if (this.usersInCall.has(receiver.userId)) {
+        const busyChatId = this.usersInCall.get(receiver.userId);
+        client.emit('call:busy', {
+          message: 'Пользователь занят другим звонком',
+          chatId: dto.chatId,
+          busyChatId,
+        });
+        this.logger.log(
+          `Call blocked - user busy: ${receiver.userId} in chat ${busyChatId}`,
+        );
+        return;
+      }
+
+      // Проверка, что инициатор не занят другим звонком
+      if (this.usersInCall.has(client.userId)) {
+        const busyChatId = this.usersInCall.get(client.userId);
+        client.emit('call:error', {
+          message: 'Вы уже находитесь на другом звонке',
+          busyChatId,
+        });
+        return;
+      }
+
       // Сохранение информации о звонке
       this.activeCalls.set(dto.chatId, {
         callerId: client.userId,
@@ -566,6 +620,9 @@ export class MessagerWebSocketGateway
         if (!this.activeCalls.has(dto.chatId)) return;
         const info = this.activeCalls.get(dto.chatId)!;
         this.activeCalls.delete(dto.chatId);
+        // Удалить из usersInCall на случай, если пользователи были добавлены
+        this.usersInCall.delete(info.callerId);
+        this.usersInCall.delete(info.receiverId);
         const callerSocketId = this.connectedUsers.get(info.callerId);
         if (callerSocketId) {
           this.server.to(callerSocketId).emit('call:no-answer', { chatId: dto.chatId });
@@ -628,6 +685,10 @@ export class MessagerWebSocketGateway
 
       // Применяем кэшированные ICE кандидаты (если были)
       this.drainPendingIceCandidates(dto.chatId);
+
+      // Отметить обоих пользователей как "на звонке"
+      this.usersInCall.set(callInfo.callerId, dto.chatId);
+      this.usersInCall.set(callInfo.receiverId, dto.chatId);
 
       this.logger.log(`Call answered: ${dto.chatId}`);
     } catch (error) {
@@ -763,6 +824,10 @@ export class MessagerWebSocketGateway
       // Удаление информации о звонке
       this.activeCalls.delete(data.chatId);
 
+      // Удалить пользователей из статуса "на звонке"
+      this.usersInCall.delete(callInfo.callerId);
+      this.usersInCall.delete(callInfo.receiverId);
+
       this.logger.log(`Call ended: ${data.chatId}`);
     } catch (error) {
       this.logger.error(`Error ending call: ${error.message}`);
@@ -793,6 +858,10 @@ export class MessagerWebSocketGateway
       }
 
       this.activeCalls.delete(data.chatId);
+
+      // Удалить пользователей из статуса "на звонке" (если звонок был отклонён до answer, они могут не быть в usersInCall)
+      this.usersInCall.delete(callInfo.callerId);
+      this.usersInCall.delete(callInfo.receiverId);
 
       this.logger.log(`Call rejected: ${data.chatId}`);
     } catch (error) {

@@ -146,6 +146,20 @@ export const VideoCall = ({
       setNoAnswer(true);
     });
 
+    webrtc.onCallBusy((data: any) => {
+      soundService.stopRingtone();
+      setIsConnecting(false);
+      alert(data.message || 'Пользователь занят другим звонком');
+      onEnd();
+    });
+
+    webrtc.onCallError((message: string) => {
+      soundService.stopRingtone();
+      setIsConnecting(false);
+      alert(message || 'Ошибка при совершении звонка');
+      onEnd();
+    });
+
     const initializeCall = async () => {
       try {
         const opts = { video: videoMode, preCapturedStream: preCapturedStreamRef.current ?? undefined };

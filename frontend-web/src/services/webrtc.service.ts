@@ -68,11 +68,15 @@ export class WebRTCService {
   private onCallEndCallback?: () => void;
   private onConnectionFailedCallback?: () => void;
   private onNoAnswerCallback?: () => void;
+  private onCallBusyCallback?: (data: any) => void;
+  private onCallErrorCallback?: (message: string) => void;
   private _handlerAnswer?: (data: any) => void;
   private _handlerIce?: (data: any) => void;
   private _handlerEnd?: (data: any) => void;
   private _handlerRejected?: (data: any) => void;
   private _handlerNoAnswer?: (data: any) => void;
+  private _handlerBusy?: (data: any) => void;
+  private _handlerError?: (data: any) => void;
 
   constructor(socket: any) {
     this.socket = socket;
@@ -86,7 +90,9 @@ export class WebRTCService {
     if (this._handlerEnd) this.socket.off('call:end', this._handlerEnd);
     if (this._handlerRejected) this.socket.off('call:rejected', this._handlerRejected);
     if (this._handlerNoAnswer) this.socket.off('call:no-answer', this._handlerNoAnswer);
-    this._handlerAnswer = this._handlerIce = this._handlerEnd = this._handlerRejected = this._handlerNoAnswer = undefined;
+    if (this._handlerBusy) this.socket.off('call:busy', this._handlerBusy);
+    if (this._handlerError) this.socket.off('call:error', this._handlerError);
+    this._handlerAnswer = this._handlerIce = this._handlerEnd = this._handlerRejected = this._handlerNoAnswer = this._handlerBusy = this._handlerError = undefined;
   }
 
   private async addIceCandidateSafe(candidate: RTCIceCandidateInit) {
@@ -165,6 +171,22 @@ export class WebRTCService {
       }
     };
     this.socket.on('call:no-answer', this._handlerNoAnswer);
+
+    this._handlerBusy = (data: { chatId: string; message: string }) => {
+      if (data.chatId === this.chatId) {
+        webrtcLogService.add('call:busy - ' + data.message);
+        this.endCall();
+        this.onCallBusyCallback?.(data);
+      }
+    };
+    this.socket.on('call:busy', this._handlerBusy);
+
+    this._handlerError = (data: { message: string }) => {
+      webrtcLogService.add('call:error - ' + data.message);
+      this.endCall();
+      this.onCallErrorCallback?.(data.message);
+    };
+    this.socket.on('call:error', this._handlerError);
   }
 
   async initiateCall(chatId: string, options?: { video?: boolean }): Promise<MediaStream> {
@@ -514,5 +536,13 @@ export class WebRTCService {
 
   onNoAnswer(callback: () => void) {
     this.onNoAnswerCallback = callback;
+  }
+
+  onCallBusy(callback: (data: any) => void) {
+    this.onCallBusyCallback = callback;
+  }
+
+  onCallError(callback: (message: string) => void) {
+    this.onCallErrorCallback = callback;
   }
 }
