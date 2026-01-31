@@ -10,6 +10,7 @@ import { VideoCall } from '../components/VideoCall';
 import { MessageInputBar } from '../components/MessageInputBar';
 import { VideoMessagePlayer } from '../components/VideoMessagePlayer';
 import { EmojiPicker } from '../components/EmojiPicker';
+import { AudioMessage } from '../components/AudioMessage';
 import { encryptionService } from '../services/encryption.service';
 import { mediaService } from '../services/media.service';
 import { api } from '../services/api';
@@ -342,8 +343,28 @@ export const ChatPage = () => {
     if (!selectedMedia.length || !chatId || !user) return;
     setIsSending(true);
     const caption = newMessage.trim() || undefined;
+    
+    // Оптимистичный UI: сразу показываем сообщения в чате
+    const tempMessages: Message[] = selectedMedia.map((item, i) => ({
+      id: `temp-${Date.now()}-${i}`,
+      chatId,
+      userId: user.id,
+      content: i === 0 ? caption : item.type === 'image' ? 'Фото' : 'Видео',
+      messageType: item.type,
+      mediaUrl: null,
+      localPreview: item.preview, // Локальный preview
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      uploading: true, // Индикатор загрузки
+      deliveryStatus: 'sent',
+    }));
+
+    setMessages((prev) => [...prev, ...tempMessages]);
+    scrollToBottom();
+
     try {
-      await Promise.all(
+      // Загружаем файлы в фоне
+      const results = await Promise.all(
         selectedMedia.map((item, i) => {
           const cap = i === 0 ? caption : undefined;
           return item.type === 'image'
@@ -351,11 +372,18 @@ export const ChatPage = () => {
             : mediaService.uploadVideo(item.file, chatId, cap);
         }),
       );
+
+      // Заменяем временные сообщения на реальные
+      setMessages((prev) =>
+        prev.filter((m) => !m.uploading).concat(results.map((r) => r.message as Message))
+      );
+
       clearSelectedMedia();
       setNewMessage('');
-      loadMessages();
       scrollToBottom();
     } catch (err: any) {
+      // Удаляем временные сообщения при ошибке
+      setMessages((prev) => prev.filter((m) => !m.uploading));
       const msg = err?.response?.data?.message || err?.message || 'Не удалось отправить медиа.';
       alert(msg);
     } finally {
@@ -623,7 +651,7 @@ export const ChatPage = () => {
           const isImage = message.messageType === 'image';
           const isVideo = message.messageType === 'video';
           const audioUrl = getAudioUrl(message.audioUrl);
-          const mediaUrl = getMediaUrl(message.mediaUrl);
+          const mediaUrl = message.uploading && message.localPreview ? message.localPreview : getMediaUrl(message.mediaUrl);
           const canSelect = isOwn && !message.id.startsWith('temp-');
           const isSelected = selectedIds.has(message.id);
 
@@ -696,31 +724,48 @@ export const ChatPage = () => {
                     </div>
                   )}
                   {isVoice && audioUrl ? (
-                    <div className="chat-audio-wrap" onClick={selectionMode ? (e) => e.stopPropagation() : undefined}>
-                      <audio controls preload="metadata">
-                        <source src={audioUrl} type="audio/webm" />
-                        <source src={audioUrl} type="audio/mpeg" />
-                      </audio>
+                    <div onClick={selectionMode ? (e) => e.stopPropagation() : undefined}>
+                      <AudioMessage 
+                        src={audioUrl} 
+                        isOwn={isOwn}
+                        uploading={message.uploading}
+                      />
                     </div>
                   ) : isImage && mediaUrl ? (
-                    <div className="space-y-1">
+                    <div className="space-y-1 relative">
                       <img
                         src={mediaUrl}
                         alt=""
-                        className="max-w-full max-h-64 rounded-lg object-cover cursor-pointer"
-                        onClick={(ev) => { if (!selectionMode) { ev.stopPropagation(); setFullscreenMedia(mediaUrl); } }}
+                        className={`max-w-full max-h-64 rounded-lg object-cover cursor-pointer ${message.uploading ? 'opacity-70' : ''}`}
+                        onClick={(ev) => { if (!selectionMode && !message.uploading) { ev.stopPropagation(); setFullscreenMedia(mediaUrl); } }}
                       />
+                      {message.uploading && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <svg className="w-8 h-8 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                        </div>
+                      )}
                       {message.content && message.content !== 'Фото' && (
                         <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
                       )}
                     </div>
                   ) : isVideo && mediaUrl ? (
-                    <div className="space-y-1" onClick={(ev) => selectionMode && ev.stopPropagation()}>
+                    <div className="space-y-1 relative" onClick={(ev) => selectionMode && ev.stopPropagation()}>
                       <VideoMessagePlayer
                         src={mediaUrl}
-                        className="max-h-64"
-                        onFullscreen={() => setFullscreenMedia(mediaUrl)}
+                        className={`max-h-64 ${message.uploading ? 'opacity-70' : ''}`}
+                        onFullscreen={() => !message.uploading && setFullscreenMedia(mediaUrl)}
                       />
+                      {message.uploading && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <svg className="w-8 h-8 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                        </div>
+                      )}
                       {message.content && message.content !== 'Видео' && (
                         <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
                       )}
@@ -946,7 +991,14 @@ export const ChatPage = () => {
             hasAttachments={selectedMedia.length > 0}
             renderMic={
               !(newMessage.trim() || selectedMedia.length > 0) ? (
-                <VoiceRecorder chatId={chatId || ''} onSent={() => loadMessages()} />
+                <VoiceRecorder 
+                  chatId={chatId || ''} 
+                  onSent={() => loadMessages()}
+                  onSendOptimistic={(tempMsg) => {
+                    setMessages((prev) => [...prev, tempMsg]);
+                    scrollToBottom();
+                  }}
+                />
               ) : null
             }
           />

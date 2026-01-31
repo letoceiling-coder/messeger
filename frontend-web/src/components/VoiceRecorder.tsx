@@ -5,11 +5,12 @@ import { useToast } from '../contexts/ToastContext';
 interface VoiceRecorderProps {
   chatId: string;
   onSent: () => void;
+  onSendOptimistic?: (tempMessage: any) => void;
 }
 
 const SWIPE_CANCEL_THRESHOLD = 80;
 
-export const VoiceRecorder = ({ chatId, onSent }: VoiceRecorderProps) => {
+export const VoiceRecorder = ({ chatId, onSent, onSendOptimistic }: VoiceRecorderProps) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -140,15 +141,37 @@ export const VoiceRecorder = ({ chatId, onSent }: VoiceRecorderProps) => {
   const sendVoiceMessage = async () => {
     if (!audioBlob || !chatId) return;
 
+    const tempId = `temp-voice-${Date.now()}`;
+    const tempAudioUrl = URL.createObjectURL(audioBlob);
+
+    // Оптимистичный UI: сразу показываем в чате
+    if (onSendOptimistic) {
+      onSendOptimistic({
+        id: tempId,
+        chatId,
+        content: 'Голосовое сообщение',
+        messageType: 'voice',
+        audioUrl: tempAudioUrl,
+        localPreview: tempAudioUrl,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        uploading: true,
+        deliveryStatus: 'sent',
+      });
+    }
+
+    cancelRecording();
+    
     try {
       const file = new File([audioBlob], 'voice.webm', { type: 'audio/webm' });
       await audioService.uploadAudio(file, chatId, recordingTime);
-      cancelRecording();
       showSuccess('Голосовое сообщение отправлено');
       onSent();
     } catch (error) {
       console.error('Ошибка отправки голосового сообщения:', error);
       showError('Ошибка при отправке голосового сообщения');
+      // При ошибке удалим временное сообщение через onSent (loadMessages)
+      onSent();
     }
   };
 

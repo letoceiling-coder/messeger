@@ -77,6 +77,10 @@ export interface Message {
   reactions?: MessageReaction[];
   /** Редактировано */
   isEdited?: boolean;
+  /** Загружается (оптимистичный UI) */
+  uploading?: boolean;
+  /** Локальный preview для загружаемых медиа */
+  localPreview?: string;
   /** Пользователь */
   user?: {
     id: string;
