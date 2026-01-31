@@ -23,6 +23,24 @@ export const useInfiniteScroll = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const previousScrollHeight = useRef<number>(0);
 
+  /**
+   * Восстанавливает позицию скролла после загрузки новых сообщений сверху
+   */
+  const restoreScrollPosition = useCallback(() => {
+    const container = containerRef.current;
+    if (!container || previousScrollHeight.current === 0) return;
+
+    // Разница в высоте = высота новых сообщений
+    const newScrollHeight = container.scrollHeight;
+    const heightDifference = newScrollHeight - previousScrollHeight.current;
+
+    if (heightDifference > 0) {
+      container.scrollTop = heightDifference;
+    }
+
+    previousScrollHeight.current = 0;
+  }, []);
+
   const handleScroll = useCallback(() => {
     const container = containerRef.current;
     if (!container || loading || !hasMore) return;
@@ -44,25 +62,6 @@ export const useInfiniteScroll = ({
       container.removeEventListener('scroll', handleScroll);
     };
   }, [handleScroll]);
-
-  /**
-   * Восстанавливает позицию скролла после загрузки новых сообщений сверху
-   * Вызывать после обновления messages
-   */
-  const restoreScrollPosition = useCallback(() => {
-    const container = containerRef.current;
-    if (!container || previousScrollHeight.current === 0) return;
-
-    // Разница в высоте = высота новых сообщений
-    const newScrollHeight = container.scrollHeight;
-    const heightDifference = newScrollHeight - previousScrollHeight.current;
-
-    if (heightDifference > 0) {
-      container.scrollTop = heightDifference;
-    }
-
-    previousScrollHeight.current = 0;
-  }, []);
 
   return { containerRef, restoreScrollPosition };
 };

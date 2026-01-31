@@ -64,6 +64,50 @@ export const ChatPage = () => {
 
   const contact: ChatMemberUser | null = chat?.members?.find((m) => m.userId !== user?.id)?.user ?? null;
 
+  // Функция для подгрузки старых сообщений
+  const loadMoreMessages = useCallback(async () => {
+    if (loadingMore || !hasMore || !chatId) return;
+    setLoadingMore(true);
+    
+    try {
+      const MESSAGES_LIMIT = 30;
+      const data = await messagesService.getMessages(chatId, MESSAGES_LIMIT, offset);
+      
+      if (data.length < MESSAGES_LIMIT) {
+        setHasMore(false);
+      }
+      
+      const decryptedMessages = await Promise.all(
+        data.map(async (msg: Message & { messageDeliveries?: { status: string }[] }) => {
+          let out = { ...msg } as Message;
+          const status = msg.messageDeliveries?.[0]?.status;
+          if (status === 'read' || status === 'delivered' || status === 'sent') {
+            out.deliveryStatus = status as MessageDeliveryStatus;
+          }
+          if (msg.isEncrypted && msg.encryptedContent && msg.iv) {
+            try {
+              const decrypted = await encryptionService.decryptMessage(
+                msg.encryptedContent,
+                msg.iv,
+                chatId,
+              );
+              if (decrypted) out.content = decrypted;
+            } catch {}
+          }
+          return out;
+        }),
+      );
+      
+      const ordered = decryptedMessages.reverse();
+      setMessages((prev) => [...ordered, ...prev]);
+      setOffset((prev) => prev + MESSAGES_LIMIT);
+    } catch (error) {
+      console.error('Ошибка загрузки старых сообщений:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, chatId, offset]);
+
   // Infinite scroll для загрузки старых сообщений
   const { containerRef, restoreScrollPosition } = useInfiniteScroll({
     onLoadMore: loadMoreMessages,
@@ -295,12 +339,6 @@ export const ChatPage = () => {
         setLoadingMore(false);
       }
     }
-  };
-
-  const loadMoreMessages = async () => {
-    if (loadingMore || !hasMore || !chatId) return;
-    setLoadingMore(true);
-    await loadMessages(false);
   };
 
   const initializeEncryption = async () => {
