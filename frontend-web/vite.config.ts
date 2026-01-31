@@ -14,4 +14,17 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    // Добавляем timestamp к именам файлов для обхода кеша
+    rollupOptions: {
+      output: {
+        // Имена файлов с хешем контента (уже есть по умолчанию)
+        entryFileNames: `assets/[name]-[hash].js`,
+        chunkFileNames: `assets/[name]-[hash].js`,
+        assetFileNames: `assets/[name]-[hash].[ext]`
+      }
+    },
+    // Очищаем dist перед каждой сборкой
+    emptyOutDir: true,
+  },
 })
