@@ -4,48 +4,43 @@ import { getMediaStreamWithFallback } from '../utils/mediaDevices';
 function getIceServers(): RTCIceServer[] {
   const servers: RTCIceServer[] = [];
   
-  // Metered.ca STUN/TURN (if configured)
+  // Custom TURN server configuration
   const turnUser = import.meta.env.VITE_TURN_USER;
   const turnCred = import.meta.env.VITE_TURN_CREDENTIAL;
+  const turnServer = import.meta.env.VITE_TURN_SERVER; // e.g., "89.169.39.244"
   
   if (turnUser && turnCred && String(turnUser).trim() && String(turnCred).trim()) {
     const username = String(turnUser).trim();
     const credential = String(turnCred).trim();
+    const server = turnServer ? String(turnServer).trim() : '89.169.39.244'; // Default to our VPS
     
-    // Metered STUN
-    servers.push({ urls: 'stun:stun.relay.metered.ca:80' });
+    // Google STUN (always available)
+    servers.push({ urls: 'stun:stun.l.google.com:19302' });
     
-    // Metered TURN UDP
+    // Custom TURN server - UDP (main port)
     servers.push({
-      urls: 'turn:global.relay.metered.ca:80',
+      urls: `turn:${server}:3478`,
       username,
       credential,
     });
     
-    // Metered TURN TCP
+    // Custom TURN server - TCP
     servers.push({
-      urls: 'turn:global.relay.metered.ca:80?transport=tcp',
+      urls: `turn:${server}:3478?transport=tcp`,
       username,
       credential,
     });
     
-    // Metered TURN 443
+    // Custom TURN server - TLS (port 5349)
     servers.push({
-      urls: 'turn:global.relay.metered.ca:443',
+      urls: `turns:${server}:5349?transport=tcp`,
       username,
       credential,
     });
     
-    // Metered TURNS (TLS)
-    servers.push({
-      urls: 'turns:global.relay.metered.ca:443?transport=tcp',
-      username,
-      credential,
-    });
-    
-    webrtcLogService.add(`ICE servers: Metered (${servers.length} servers)`);
+    webrtcLogService.add(`ICE servers: Custom TURN ${server} (${servers.length} servers)`);
   } else {
-    // Fallback to Google STUN
+    // Fallback to Google STUN only
     servers.push({ urls: 'stun:stun.l.google.com:19302' });
     servers.push({ urls: 'stun:stun1.l.google.com:19302' });
     servers.push({ urls: 'stun:stun2.l.google.com:19302' });
