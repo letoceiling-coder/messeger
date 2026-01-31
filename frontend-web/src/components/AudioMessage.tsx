@@ -7,16 +7,32 @@ interface AudioMessageProps {
   uploading?: boolean;
 }
 
+// Глобальная переменная для хранения текущего играющего аудио
+let currentPlayingAudio: HTMLAudioElement | null = null;
+
 export const AudioMessage = ({ src, duration, isOwn = false, uploading = false }: AudioMessageProps) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(duration || 0);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // Пауза при размонтировании (когда пользователь выполнил другое действие)
+  // Останавливаем аудио при любом действии пользователя
   useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    // Слушатель на событие паузы извне
+    const handlePause = () => {
+      if (isPlaying) {
+        setIsPlaying(false);
+      }
+    };
+
+    audio.addEventListener('pause', handlePause);
+
     return () => {
-      const audio = audioRef.current;
+      audio.removeEventListener('pause', handlePause);
+      // Пауза при размонтировании
       if (audio && isPlaying) {
         audio.pause();
       }
@@ -60,8 +76,15 @@ export const AudioMessage = ({ src, duration, isOwn = false, uploading = false }
       audio.pause();
       setIsPlaying(false);
     } else {
+      // Останавливаем предыдущее играющее аудио
+      if (currentPlayingAudio && currentPlayingAudio !== audio) {
+        currentPlayingAudio.pause();
+      }
+      
+      // Запускаем новое
       audio.play();
       setIsPlaying(true);
+      currentPlayingAudio = audio;
     }
   };
 
