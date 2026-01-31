@@ -14,6 +14,7 @@ export const VideoMessagePlayer = ({ src, className = '', onFullscreen, onClick 
   const anchorRef = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
 
   const getMenuPosition = (): { top: number; left: number } | null => {
@@ -107,6 +108,17 @@ export const VideoMessagePlayer = ({ src, className = '', onFullscreen, onClick 
     }
   };
 
+  if (loadError) {
+    return (
+      <div className={`relative rounded-lg overflow-hidden bg-red-500/10 border border-red-500/30 flex flex-col items-center justify-center p-6 text-center ${className}`} style={{ minHeight: '150px' }}>
+        <svg className="w-10 h-10 text-red-500 mb-2" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <p className="text-xs text-red-400">Видео недоступно</p>
+      </div>
+    );
+  }
+
   return (
     <div className={`relative rounded-lg overflow-hidden bg-black ${className}`} onClick={onClick}>
       <video
@@ -120,6 +132,10 @@ export const VideoMessagePlayer = ({ src, className = '', onFullscreen, onClick 
         }}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
+        onError={(e) => {
+          console.warn('Video load error:', src, e);
+          setLoadError(true);
+        }}
       />
       <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between gap-1 p-1.5 bg-gradient-to-t from-black/80 to-transparent">
         <button

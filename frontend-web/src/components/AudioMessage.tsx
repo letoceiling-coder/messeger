@@ -134,7 +134,14 @@ export const AudioMessage = ({ src, duration, isOwn = false, uploading = false }
 
   return (
     <div className="flex items-center gap-3 min-w-[320px] max-w-full">
-      <audio ref={audioRef} src={src} preload="metadata" />
+      <audio 
+        ref={audioRef} 
+        src={src} 
+        preload="metadata"
+        onError={(e) => {
+          console.warn('Audio load error:', src, e);
+        }}
+      />
       
       {/* Большая круглая кнопка Play/Pause */}
       <button

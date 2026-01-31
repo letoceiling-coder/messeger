@@ -235,37 +235,51 @@ export const VideoCall = ({
     el.srcObject = remoteStream;
     const hasVideo = remoteStream.getVideoTracks().length > 0;
     webrtcLogService.add(`Auto-play video: userInteracted=${userInteractedRef.current}, hasVideo=${hasVideo}`);
+    
+    let playAttempts = 0;
+    const MAX_ATTEMPTS = 5;
+    
     const play = () => {
-      // Проверяем, был ли user interaction
+      if (playAttempts >= MAX_ATTEMPTS) {
+        webrtcLogService.add(`video.play() stopped after ${MAX_ATTEMPTS} attempts`);
+        return;
+      }
+      
+      playAttempts++;
+      
       if (userInteractedRef.current) {
-        webrtcLogService.add('Attempting video.play()...');
+        webrtcLogService.add(`Attempting video.play() [${playAttempts}/${MAX_ATTEMPTS}]...`);
         el.play()
-          .then(() => webrtcLogService.add('video.play() SUCCESS'))
+          .then(() => {
+            webrtcLogService.add('video.play() SUCCESS');
+            playAttempts = MAX_ATTEMPTS; // Останавливаем дальнейшие попытки
+          })
           .catch((err) => webrtcLogService.add(`video.play() BLOCKED: ${err.message || err}`));
       } else {
         webrtcLogService.add('video.play() skipped: no user interaction yet');
       }
     };
+    
     play();
-    const t1 = setTimeout(play, 100);
-    const t2 = setTimeout(play, 300);
-    const t3 = setTimeout(play, 800);
-    const t4 = setTimeout(play, 1500);
-    // На мобильных (ответчик) видео часто появляется с задержкой — несколько попыток play
-    const t5 = hasVideo ? setTimeout(play, 2500) : null;
-    const t6 = hasVideo ? setTimeout(play, 4000) : null;
-    const interval = hasVideo ? setInterval(play, 500) : null;
-    const stopInterval = hasVideo ? setTimeout(() => { if (interval) clearInterval(interval); }, 5000) : null;
+    const t1 = setTimeout(play, 300);
+    const t2 = setTimeout(play, 1000);
+    const t3 = hasVideo ? setTimeout(play, 2000) : null;
+    const t4 = hasVideo ? setTimeout(play, 3500) : null;
+    
     const onAddTrack = () => {
       webrtcLogService.add('video onaddtrack');
-      play();
-      if (remoteStream?.getVideoTracks().length) play();
+      if (playAttempts < MAX_ATTEMPTS) {
+        play();
+      }
     };
+    
     remoteStream.onaddtrack = onAddTrack;
+    
     return () => {
-      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
-      if (t5) clearTimeout(t5); if (t6) clearTimeout(t6);
-      if (interval) clearInterval(interval); if (stopInterval) clearTimeout(stopInterval);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      if (t3) clearTimeout(t3);
+      if (t4) clearTimeout(t4);
       remoteStream.onaddtrack = null;
     };
   }, [remoteStream, localStream]);
