@@ -10,6 +10,14 @@ interface AudioMessageProps {
 // Глобальная переменная для хранения текущего играющего аудио
 let currentPlayingAudio: HTMLAudioElement | null = null;
 
+// Экспортируем функцию для остановки текущего аудио извне
+export const pauseCurrentAudio = () => {
+  if (currentPlayingAudio) {
+    currentPlayingAudio.pause();
+    currentPlayingAudio = null;
+  }
+};
+
 export const AudioMessage = ({ src, duration, isOwn = false, uploading = false }: AudioMessageProps) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);

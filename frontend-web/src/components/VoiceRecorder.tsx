@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { audioService } from '../services/audio.service';
 import { useToast } from '../contexts/ToastContext';
+import { pauseCurrentAudio } from './AudioMessage';
 
 interface VoiceRecorderProps {
   chatId: string;
@@ -38,6 +39,9 @@ export const VoiceRecorder = ({ chatId, onSent, onSendOptimistic }: VoiceRecorde
   }, [audioUrl]);
 
   const startRecording = async () => {
+    // Останавливаем любое играющее аудио перед записью
+    pauseCurrentAudio();
+    
     setIsRecording(true);
     setRecordingTime(0);
     try {

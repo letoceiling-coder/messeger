@@ -10,7 +10,7 @@ import { VideoCall } from '../components/VideoCall';
 import { MessageInputBar } from '../components/MessageInputBar';
 import { VideoMessagePlayer } from '../components/VideoMessagePlayer';
 import { EmojiPicker } from '../components/EmojiPicker';
-import { AudioMessage } from '../components/AudioMessage';
+import { AudioMessage, pauseCurrentAudio } from '../components/AudioMessage';
 import { LazyImage } from '../components/LazyImage';
 import { LazyVideo } from '../components/LazyVideo';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
@@ -275,6 +275,26 @@ export const ChatPage = () => {
     };
   }, [contextMenu]);
 
+  // Пауза аудио при скролле
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      pauseCurrentAudio();
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+    };
+  }, [containerRef]);
+
+  // Пауза аудио при смене чата
+  useEffect(() => {
+    pauseCurrentAudio();
+  }, [chatId]);
+
   const loadMessages = async (initialLoad = true) => {
     if (!chatId) return;
     
@@ -369,6 +389,10 @@ export const ChatPage = () => {
     e?.preventDefault();
     const text = newMessage.trim();
     if (!text || !chatId || !user) return;
+    
+    // Останавливаем аудио при отправке сообщения
+    pauseCurrentAudio();
+    
     const tempId = `temp-${Date.now()}`;
     const optimistic: Message = {
       id: tempId,
@@ -436,6 +460,10 @@ export const ChatPage = () => {
 
   const handleSendMedia = async () => {
     if (!selectedMedia.length || !chatId || !user) return;
+    
+    // Останавливаем аудио при отправке медиа
+    pauseCurrentAudio();
+    
     setIsSending(true);
     const caption = newMessage.trim() || undefined;
     
