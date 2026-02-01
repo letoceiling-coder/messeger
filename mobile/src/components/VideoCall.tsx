@@ -16,6 +16,7 @@ interface VideoCallProps {
   isIncoming: boolean;
   callerId?: string;
   offer?: RTCSessionDescriptionInit;
+  videoMode?: boolean;
   onEnd: () => void;
 }
 
@@ -52,9 +53,9 @@ export const VideoCall = ({
         let stream: any;
         if (isIncoming && offer) {
           stream = await webrtc.handleOffer(chatId, offer);
+          stream = await webrtc.handleOffer(chatId, offer, videoMode);
         } else {
-          stream = await webrtc.initiateCall(chatId);
-        }
+          stream = await webrtc.initiateCall(chatId, videoMode);
         setLocalStream(stream);
       } catch (error) {
         console.error('Ошибка инициализации звонка:', error);
@@ -69,7 +70,7 @@ export const VideoCall = ({
       webrtc.endCall();
     };
   }, [chatId, isIncoming, offer, socket, onEnd]);
-
+  }, [chatId, isIncoming, offer, videoMode, socket, onEnd]);
   const handleEndCall = () => {
     if (webrtcServiceRef.current) {
       webrtcServiceRef.current.endCall();
@@ -102,7 +103,7 @@ export const VideoCall = ({
     if (offer && webrtcServiceRef.current) {
       try {
         const stream = await webrtcServiceRef.current.handleOffer(chatId, offer);
-        setLocalStream(stream);
+        const stream = await webrtcServiceRef.current.handleOffer(chatId, offer, videoMode);
       } catch (error) {
         console.error('Ошибка принятия звонка:', error);
         Alert.alert('Ошибка', 'Не удалось принять звонок');
@@ -116,7 +117,9 @@ export const VideoCall = ({
         <View style={styles.incomingCallContainer}>
           <View style={styles.incomingCallBox}>
             <Text style={styles.incomingCallTitle}>Входящий видеозвонок</Text>
-            <View style={styles.incomingCallButtons}>
+            <Text style={styles.incomingCallTitle}>
+              {videoMode ? 'Входящий видеозвонок' : 'Входящий звонок'}
+            </Text>
               <TouchableOpacity
                 style={[styles.button, styles.acceptButton]}
                 onPress={handleAccept}

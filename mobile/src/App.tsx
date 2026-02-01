@@ -1,5 +1,5 @@
 import React, {useEffect} from 'react';
-import {StatusBar, LogBox} from 'react-native';
+import {View, StatusBar, LogBox} from 'react-native';
 import {NavigationContainer} from '@react-navigation/native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
@@ -13,6 +13,7 @@ import {NotificationProvider} from '@contexts/NotificationContext';
 
 // Navigation
 import RootNavigator from './navigation/RootNavigator';
+import {ErrorBoundary} from '@components/ErrorBoundary';
 
 // Services
 import {initializeTheme} from '@utils/theme';
@@ -41,10 +42,13 @@ const App = () => {
             <WebSocketProvider>
               <ChatsProvider>
                 <NotificationProvider>
-                  <NavigationContainer>
-                    <StatusBar barStyle="light-content" />
-                    <RootNavigator />
-                  </NavigationContainer>
+                  <ErrorBoundary>
+                    <NavigationContainer>
+                      <StatusBar barStyle="light-content" />
+                      <RootNavigator />
+                      <GlobalIncomingCallOverlay />
+                    </NavigationContainer>
+                  </ErrorBoundary>
                 </NotificationProvider>
               </ChatsProvider>
             </WebSocketProvider>

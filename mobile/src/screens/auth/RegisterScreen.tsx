@@ -56,7 +56,11 @@ const RegisterScreen = () => {
         password,
       });
     } catch (error: any) {
-      const message = error.response?.data?.message || 'Ошибка регистрации';
+      const msg = error.response?.data?.message;
+      const isNetwork = !error.response;
+      const message = isNetwork
+        ? 'Проверьте интернет или попробуйте позже.'
+        : (Array.isArray(msg) ? msg.join('. ') : msg) || 'Ошибка регистрации';
       Alert.alert('Ошибка', message);
     } finally {
       setLoading(false);

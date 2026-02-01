@@ -33,7 +33,12 @@ const LoginScreen = () => {
     try {
       await login({email: email.trim(), password});
     } catch (error: any) {
-      Alert.alert('Ошибка входа', error.response?.data?.message || 'Неверный email или пароль');
+      const msg = error.response?.data?.message;
+      const isNetwork = !error.response;
+      Alert.alert(
+        'Ошибка входа',
+        isNetwork ? 'Проверьте интернет или попробуйте позже.' : (Array.isArray(msg) ? msg[0] : msg) || 'Неверный email или пароль',
+      );
     } finally {
       setLoading(false);
     }

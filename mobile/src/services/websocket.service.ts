@@ -1,7 +1,6 @@
 import { io, Socket } from 'socket.io-client';
+import { WS_BASE_URL } from '@config/api';
 import { Message } from '../types';
-
-const WS_URL = 'http://localhost:3000'; // Замените на ваш IP для тестирования на устройстве
 
 class WebSocketService {
   private socket: Socket | null = null;

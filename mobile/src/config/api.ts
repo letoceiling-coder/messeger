@@ -1,11 +1,14 @@
 /**
  * API Configuration
  * Настройки подключения к backend серверу
+ * Используем тот же домен, что и веб — тогда с телефона запросы работают так же.
  */
 
-// Сервер мессенджера (nginx проксирует /api и /socket.io)
-export const API_BASE_URL = 'http://89.169.39.244/api';
-export const WS_BASE_URL = 'http://89.169.39.244';
+// Тот же адрес, что и веб-версия (nginx проксирует /api и /socket.io)
+export const API_BASE_URL = 'https://neekloai.ru/api';
+export const WS_BASE_URL = 'https://neekloai.ru';
+// Базовый URL для медиа (фото, видео, аудио) — /uploads раздаётся nginx
+export const MEDIA_BASE_URL = 'https://neekloai.ru';
 
 // Для локальной разработки:
 // Android эмулятор: 'http://10.0.2.2:3001'
@@ -20,6 +23,7 @@ export const ENDPOINTS = {
   
   // Users
   USERS: '/users',
+  USERS_SEARCH: '/users/search',
   USER_AVATAR: '/users/me/avatar',
   
   // Chats

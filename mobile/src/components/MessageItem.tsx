@@ -1,10 +1,16 @@
 import React from 'react';
-import {View, Text, StyleSheet, TouchableOpacity} from 'react-native';
+import {View, Text, Image, StyleSheet, TouchableOpacity, Dimensions, Linking} from 'react-native';
 import {Message} from '@types/index';
 import {useAuth} from '@contexts/AuthContext';
 import {useTheme} from '@contexts/ThemeContext';
 import {formatMessageTime} from '@utils/date';
 import Icon from 'react-native-vector-icons/Ionicons';
+import {VoiceMessage} from './VoiceMessage';
+import {MEDIA_BASE_URL} from '@config/api';
+
+const BASE_URL = MEDIA_BASE_URL;
+const {width: SCREEN_WIDTH} = Dimensions.get('window');
+const MEDIA_MAX_WIDTH = SCREEN_WIDTH * 0.65;
 
 interface MessageItemProps {
   message: Message;
@@ -16,20 +22,52 @@ export const MessageItem = ({message, onLongPress}: MessageItemProps) => {
   const {colors} = useTheme();
   const isOwnMessage = message.userId === user?.id;
 
-  const getMessageContent = () => {
+  const getMediaUrl = (path?: string | null) => {
+    if (!path) return null;
+    if (path.startsWith('http')) return path;
+    const base = BASE_URL.endsWith('/') ? BASE_URL.slice(0, -1) : BASE_URL;
+    const p = path.startsWith('/') ? path : `/${path}`;
+    return `${base}${p}`;
+  };
+
+  const renderContent = () => {
     if (message.messageType === 'voice') {
-      return '🎤 Голосовое сообщение';
+      const url = getMediaUrl(message.audioUrl);
+      if (url) return <VoiceMessage audioUrl={url} isOwn={isOwnMessage} />;
+      return <Text style={styles.content}>🎤 Голосовое</Text>;
     }
     if (message.messageType === 'image') {
-      return '🖼 Фото';
+      const url = getMediaUrl(message.mediaUrl);
+      if (url) {
+        return (
+          <Image
+            source={{uri: url}}
+            style={[styles.mediaImage, {maxWidth: MEDIA_MAX_WIDTH}]}
+            resizeMode="cover"
+            onError={() => console.warn('Image load failed:', url)}
+          />
+        );
+      }
+      return <Text style={styles.content}>🖼 Фото</Text>;
     }
     if (message.messageType === 'video') {
-      return '🎥 Видео';
+      const url = getMediaUrl(message.mediaUrl);
+      if (url) {
+        return (
+          <TouchableOpacity
+            onPress={() => Linking.openURL(url).catch(() => {})}
+            style={[styles.videoPlaceholder, {maxWidth: MEDIA_MAX_WIDTH}]}>
+            <Icon name="play-circle" size={48} color="#fff" />
+            <Text style={styles.videoText}>Нажмите для просмотра</Text>
+          </TouchableOpacity>
+        );
+      }
+      return <Text style={styles.content}>🎥 Видео</Text>;
     }
     if (message.messageType === 'document') {
-      return `📎 ${message.fileName || 'Документ'}`;
+      return <Text style={styles.content}>📎 {message.fileName || 'Документ'}</Text>;
     }
-    return message.content || '';
+    return <Text style={styles.content}>{message.content || ''}</Text>;
   };
 
   const renderDeliveryStatus = () => {
@@ -62,6 +100,24 @@ export const MessageItem = ({message, onLongPress}: MessageItemProps) => {
     content: {
       fontSize: 16,
       color: isOwnMessage ? '#ffffff' : colors.text,
+    },
+    mediaImage: {
+      height: 200,
+      borderRadius: 12,
+      marginVertical: 4,
+    },
+    videoPlaceholder: {
+      height: 160,
+      borderRadius: 12,
+      backgroundColor: 'rgba(0,0,0,0.4)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginVertical: 4,
+    },
+    videoText: {
+      color: '#fff',
+      marginTop: 8,
+      fontSize: 14,
     },
     footer: {
       flexDirection: 'row',
@@ -108,7 +164,7 @@ export const MessageItem = ({message, onLongPress}: MessageItemProps) => {
         )}
 
         {/* Content */}
-        <Text style={styles.content}>{getMessageContent()}</Text>
+        {renderContent()}
 
         {/* Footer */}
         <View style={styles.footer}>

@@ -14,6 +14,7 @@ interface MessageInputProps {
   onSend: (text: string) => void;
   onTyping?: () => void;
   onStopTyping?: () => void;
+  onAttach?: () => void;
   placeholder?: string;
 }
 
@@ -21,6 +22,7 @@ export const MessageInput = ({
   onSend,
   onTyping,
   onStopTyping,
+  onAttach,
   placeholder = 'Сообщение',
 }: MessageInputProps) => {
   const {colors} = useTheme();
@@ -122,7 +124,10 @@ export const MessageInput = ({
             maxLength={4000}
           />
 
-          <TouchableOpacity style={styles.attachButton}>
+          <TouchableOpacity
+            style={styles.attachButton}
+            onPress={onAttach}
+            disabled={!onAttach}>
             <Icon name="attach" size={24} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>

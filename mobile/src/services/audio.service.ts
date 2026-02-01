@@ -1,4 +1,4 @@
-import { api } from './api';
+import api from './api';
 
 export const audioService = {
   async uploadAudio(uri: string, chatId: string, duration?: number): Promise<{ message: any; audioUrl: string }> {
@@ -16,12 +16,11 @@ export const audioService = {
       formData.append('duration', duration.toString());
     }
 
-    const response = await api.post('/messages/upload-audio', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-
-    return response.data;
+    const response = await api.post<{message: any; audioUrl: string}>(
+      '/messages/upload-audio',
+      formData,
+      {headers: {'Content-Type': 'multipart/form-data'}},
+    );
+    return response;
   },
 };

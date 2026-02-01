@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import {useRoute, useNavigation} from '@react-navigation/native';
 import {useTheme} from '@contexts/ThemeContext';
@@ -18,8 +19,10 @@ import {MessageItem} from '@components/MessageItem';
 import {MessageInput} from '@components/MessageInput';
 import {saveDraft, getDraft, deleteDraft} from '@utils/drafts';
 import api from '@services/api';
+import {mediaService} from '@services/media.service';
 import {ENDPOINTS} from '@config/api';
 import Icon from 'react-native-vector-icons/Ionicons';
+import {launchImageLibrary} from 'react-native-image-picker';
 
 const ChatScreen = () => {
   const route = useRoute();
@@ -28,7 +31,8 @@ const ChatScreen = () => {
   const {user} = useAuth();
   const {socket, isConnected, joinChat, sendMessage, onMessage} = useWebSocket();
 
-  const {chatId, chat} = route.params as {chatId: string; chat?: Chat};
+  const {chatId, chat: initialChat} = route.params as {chatId: string; chat?: Chat};
+  const [chat, setChat] = useState<Chat | undefined>(initialChat);
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,15 +42,21 @@ const ChatScreen = () => {
   useEffect(() => {
     loadMessages();
     loadDraft();
+    if (!chat?.members?.length) {
+      api.get<Chat>(`${ENDPOINTS.CHATS}/${chatId}`).then(setChat).catch(() => {});
+    }
     
     if (isConnected) {
       joinChat(chatId);
     }
 
-    // Слушатель новых сообщений
+    // Слушатель новых сообщений (дедупликация — сервер шлёт и в room, и client)
     const unsubscribe = onMessage((message: Message) => {
       if (message.chatId === chatId) {
-        setMessages(prev => [message, ...prev]);
+        setMessages(prev => {
+          if (prev.some(m => m.id === message.id)) return prev;
+          return [message, ...prev];
+        });
         
         // Прокрутить вниз
         setTimeout(() => {
@@ -96,6 +106,54 @@ const ChatScreen = () => {
       console.error('Error sending message:', error);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleAttach = () => {
+    launchImageLibrary(
+      {mediaType: 'mixed', selectionLimit: 5, includeBase64: false},
+      async response => {
+        if (response.didCancel || !response.assets?.length) return;
+        if (response.errorCode) {
+          Alert.alert('Ошибка', response.errorMessage || 'Не удалось выбрать файл');
+          return;
+        }
+        setSending(true);
+        try {
+          for (const asset of response.assets) {
+            const uri = asset.uri || (asset as any).originalPath;
+            if (!uri) continue;
+            const isVideo = (asset.type || '').startsWith('video/');
+            const mimeType = asset.type || (isVideo ? 'video/mp4' : 'image/jpeg');
+            const fileName = asset.fileName || (isVideo ? 'video.mp4' : 'image.jpg');
+            const res = isVideo
+              ? await mediaService.uploadVideo(uri, chatId, mimeType, fileName)
+              : await mediaService.uploadImage(uri, chatId, mimeType, fileName);
+            if (res?.message) {
+              setMessages(prev => {
+                if (prev.some(m => m.id === res.message.id)) return prev;
+                return [res.message, ...prev];
+              });
+            }
+          }
+        } catch (e: any) {
+          console.error('Upload error:', e?.message || e);
+          const msg = e?.response?.data?.message || e?.message || 'Не удалось загрузить файл';
+          Alert.alert('Ошибка', msg);
+        } finally {
+          setSending(false);
+        }
+      },
+    );
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    try {
+      await api.delete(`${ENDPOINTS.MESSAGES}/${messageId}`);
+      setMessages(prev => prev.filter(m => m.id !== messageId));
+    } catch (e) {
+      console.error('Delete error:', e);
+      Alert.alert('Ошибка', 'Не удалось удалить сообщение');
     }
   };
 
@@ -150,6 +208,11 @@ const ChatScreen = () => {
       color: colors.textSecondary,
       marginTop: 2,
     },
+    headerButton: {
+      padding: 8,
+      marginLeft: 4,
+      minWidth: 40,
+    },
     loadingContainer: {
       flex: 1,
       justifyContent: 'center',
@@ -193,6 +256,35 @@ const ChatScreen = () => {
             <Text style={styles.headerSubtitle}>нет соединения</Text>
           )}
         </View>
+
+        <TouchableOpacity
+          style={styles.headerButton}
+          onPress={() => {
+            const otherUserId = chat?.members?.find(m => m.userId !== user?.id)?.userId;
+            if (otherUserId) {
+              navigation.navigate('Call' as never, {chatId, userId: otherUserId, isVideo: false} as never);
+            } else if (chat?.type === 'group') {
+              Alert.alert('Групповой чат', 'Звонки доступны только в личных чатах');
+            } else {
+              Alert.alert('Ожидание', 'Загрузка данных чата...');
+            }
+          }}>
+          <Icon name="call" size={24} color={colors.text} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.headerButton}
+          onPress={() => {
+            const otherUserId = chat?.members?.find(m => m.userId !== user?.id)?.userId;
+            if (otherUserId) {
+              navigation.navigate('Call' as never, {chatId, userId: otherUserId, isVideo: true} as never);
+            } else if (chat?.type === 'group') {
+              Alert.alert('Групповой чат', 'Звонки доступны только в личных чатах');
+            } else {
+              Alert.alert('Ожидание', 'Загрузка данных чата...');
+            }
+          }}>
+          <Icon name="videocam" size={24} color={colors.text} />
+        </TouchableOpacity>
       </View>
 
       {/* Messages */}
@@ -210,7 +302,23 @@ const ChatScreen = () => {
           ref={flatListRef}
           data={messages}
           keyExtractor={item => item.id}
-          renderItem={({item}) => <MessageItem message={item} />}
+          renderItem={({item}) => (
+            <MessageItem
+              message={item}
+              onLongPress={() => {
+                if (item.userId === user?.id) {
+                  Alert.alert(
+                    'Удалить сообщение?',
+                    '',
+                    [
+                      {text: 'Отмена', style: 'cancel'},
+                      {text: 'Удалить', style: 'destructive', onPress: () => handleDeleteMessage(item.id)},
+                    ],
+                  );
+                }
+              }}
+            />
+          )}
           inverted
           contentContainerStyle={{paddingVertical: 8}}
         />
@@ -221,6 +329,7 @@ const ChatScreen = () => {
         onSend={handleSend}
         onTyping={handleTyping}
         onStopTyping={handleStopTyping}
+        onAttach={handleAttach}
       />
     </KeyboardAvoidingView>
   );

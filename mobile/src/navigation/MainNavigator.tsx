@@ -8,6 +8,7 @@ import ChatsScreen from '@screens/main/ChatsScreen';
 import ChatScreen from '@screens/main/ChatScreen';
 import SettingsScreen from '@screens/main/SettingsScreen';
 import CallScreen from '@screens/main/CallScreen';
+import NewChatScreen from '@screens/main/NewChatScreen';
 
 // Types
 import {Chat} from '@types/index';
@@ -15,7 +16,15 @@ import {Chat} from '@types/index';
 export type MainStackParamList = {
   Tabs: undefined;
   Chat: {chatId: string; chat?: Chat};
-  Call: {chatId: string; userId: string; isVideo: boolean; isIncoming?: boolean};
+  Call: {
+    chatId: string;
+    userId: string;
+    isVideo: boolean;
+    isIncoming?: boolean;
+    offer?: RTCSessionDescriptionInit;
+    callerId?: string;
+  };
+  NewChat: undefined;
 };
 
 export type TabParamList = {
@@ -68,6 +77,7 @@ const MainNavigator = () => {
     <Stack.Navigator screenOptions={{headerShown: false}}>
       <Stack.Screen name="Tabs" component={TabNavigator} />
       <Stack.Screen name="Chat" component={ChatScreen} />
+      <Stack.Screen name="NewChat" component={NewChatScreen} />
       <Stack.Screen
         name="Call"
         component={CallScreen}

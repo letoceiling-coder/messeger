@@ -103,9 +103,9 @@ const ChatsScreen = () => {
               </Text>
             )}
 
-            {item.unreadCount && item.unreadCount > 0 && (
+            {(item.unreadCount ?? 0) > 0 && (
               <View style={[styles.badge, {backgroundColor: colors.accent}]}>
-                <Text style={styles.badgeText}>{item.unreadCount > 99 ? '99+' : item.unreadCount}</Text>
+                <Text style={styles.badgeText}>{item.unreadCount! > 99 ? '99+' : item.unreadCount}</Text>
               </View>
             )}
           </View>
@@ -235,8 +235,13 @@ const ChatsScreen = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}]}>
         <Text style={styles.headerTitle}>Чаты</Text>
+        <TouchableOpacity
+          style={{padding: 8}}
+          onPress={() => navigation.navigate('NewChat' as never)}>
+          <Icon name="add-circle" size={28} color={colors.accent} />
+        </TouchableOpacity>
       </View>
 
       {chats.length === 0 ? (

@@ -1,9 +1,16 @@
-import React, {createContext, useContext, useEffect, useState, ReactNode, useCallback} from 'react';
+import React, {createContext, useContext, useEffect, useState, useRef, ReactNode, useCallback} from 'react';
 import {io, Socket} from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {WS_BASE_URL} from '@config/api';
 import {useAuth} from './AuthContext';
 import {Message} from '@types/index';
+
+export interface IncomingCall {
+  chatId: string;
+  callerId: string;
+  offer: RTCSessionDescriptionInit;
+  videoMode?: boolean;
+}
 
 interface WebSocketContextType {
   socket: Socket | null;
@@ -14,6 +21,9 @@ interface WebSocketContextType {
   onMessage: (callback: (message: Message) => void) => () => void;
   onTypingStart: (callback: (data: {chatId: string; userId: string}) => void) => () => void;
   onTypingStop: (callback: (data: {chatId: string; userId: string}) => void) => () => void;
+  globalIncomingCall: IncomingCall | null;
+  rejectGlobalCall: () => void;
+  clearGlobalCall: () => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
@@ -22,21 +32,34 @@ export const WebSocketProvider = ({children}: {children: ReactNode}) => {
   const {isAuthenticated} = useAuth();
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [globalIncomingCall, setGlobalIncomingCall] = useState<IncomingCall | null>(null);
+  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
     if (isAuthenticated) {
       initializeSocket();
     } else {
-      disconnectSocket();
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+      setSocket(null);
+      setIsConnected(false);
+      setGlobalIncomingCall(null);
     }
 
     return () => {
-      disconnectSocket();
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+      setSocket(null);
+      setIsConnected(false);
     };
   }, [isAuthenticated]);
 
   const initializeSocket = async () => {
     try {
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+      setSocket(null);
+
       const token = await AsyncStorage.getItem('access_token');
       if (!token) return;
 
@@ -63,19 +86,31 @@ export const WebSocketProvider = ({children}: {children: ReactNode}) => {
         console.error('WebSocket ошибка:', error);
       });
 
+      newSocket.on('call:offer', (data: IncomingCall) => {
+        setGlobalIncomingCall(data);
+      });
+
+      newSocket.on('call:end', (data: {chatId: string}) => {
+        setGlobalIncomingCall(prev => (prev?.chatId === data.chatId ? null : prev));
+      });
+
+      socketRef.current = newSocket;
       setSocket(newSocket);
     } catch (error) {
       console.error('Ошибка инициализации WebSocket:', error);
     }
   };
 
-  const disconnectSocket = () => {
-    if (socket) {
-      socket.disconnect();
-      setSocket(null);
-      setIsConnected(false);
+  const rejectGlobalCall = useCallback(() => {
+    if (globalIncomingCall && socket) {
+      socket.emit('call:reject', {chatId: globalIncomingCall.chatId});
+      setGlobalIncomingCall(null);
     }
-  };
+  }, [globalIncomingCall, socket]);
+
+  const clearGlobalCall = useCallback(() => {
+    setGlobalIncomingCall(null);
+  }, []);
 
   const sendMessage = useCallback((data: any) => {
     if (socket && isConnected) {
@@ -133,6 +168,9 @@ export const WebSocketProvider = ({children}: {children: ReactNode}) => {
         onMessage,
         onTypingStart,
         onTypingStop,
+        globalIncomingCall,
+        rejectGlobalCall,
+        clearGlobalCall,
       }}>
       {children}
     </WebSocketContext.Provider>

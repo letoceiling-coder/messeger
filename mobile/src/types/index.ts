@@ -76,7 +76,8 @@ export interface Message {
 
 export interface AuthResponse {
   user: User;
-  access_token: string;
+  access_token?: string;  // snake_case (legacy)
+  accessToken?: string;   // camelCase (backend)
 }
 
 export interface LoginCredentials {

@@ -44,7 +44,9 @@ export const AuthProvider = ({children}: {children: ReactNode}) => {
     try {
       const response: AuthResponse = await api.post(ENDPOINTS.LOGIN, credentials);
       
-      await AsyncStorage.setItem('access_token', response.access_token);
+      const token = response.access_token ?? response.accessToken;
+      if (!token) throw new Error('Токен не получен');
+      await AsyncStorage.setItem('access_token', token);
       await AsyncStorage.setItem('user', JSON.stringify(response.user));
       
       setUser(response.user);
@@ -58,7 +60,9 @@ export const AuthProvider = ({children}: {children: ReactNode}) => {
     try {
       const response: AuthResponse = await api.post(ENDPOINTS.REGISTER, credentials);
       
-      await AsyncStorage.setItem('access_token', response.access_token);
+      const token = response.access_token ?? response.accessToken;
+      if (!token) throw new Error('Токен не получен');
+      await AsyncStorage.setItem('access_token', token);
       await AsyncStorage.setItem('user', JSON.stringify(response.user));
       
       setUser(response.user);

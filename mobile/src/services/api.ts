@@ -14,12 +14,15 @@ class ApiService {
       },
     });
 
-    // Request interceptor - добавляем токен
+    // Request interceptor - добавляем токен, для FormData убираем Content-Type
     this.api.interceptors.request.use(
       async config => {
         const token = await AsyncStorage.getItem('access_token');
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
+        }
+        if (config.data instanceof FormData) {
+          delete config.headers['Content-Type'];
         }
         return config;
       },
@@ -71,12 +74,9 @@ class ApiService {
     return response.data;
   }
 
-  // Upload file (FormData)
+  // Upload file (FormData) — Content-Type убирается в interceptor
   async upload<T = any>(url: string, formData: FormData) {
     const response = await this.api.post<T>(url, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
       timeout: TIMEOUTS.UPLOAD,
     });
     return response.data;
