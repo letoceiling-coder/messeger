@@ -20,6 +20,14 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResponseDto> {
+    console.log('[AUTH] Register attempt:', {
+      email: dto.email,
+      username: dto.username,
+      passwordLength: dto.password?.length,
+      passwordFirst3: dto.password?.substring(0, 3),
+      passwordType: typeof dto.password,
+    });
+    
     // Нормализация email (case-insensitive)
     const emailNormalized = dto.email.toLowerCase().trim();
     
@@ -77,7 +85,13 @@ export class AuthService {
     // Нормализация email (case-insensitive)
     const emailNormalized = dto.email.toLowerCase().trim();
     
-    console.log('[AUTH] Login attempt:', { email: dto.email, normalized: emailNormalized });
+    console.log('[AUTH] Login attempt:', { 
+      email: dto.email, 
+      normalized: emailNormalized,
+      passwordLength: dto.password?.length,
+      passwordFirst3: dto.password?.substring(0, 3),
+      passwordType: typeof dto.password,
+    });
     
     // Поиск пользователя по email (пробуем нормализованный и оригинальный)
     const foundUser = await this.prisma.user.findFirst({
