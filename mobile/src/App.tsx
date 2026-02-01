@@ -26,11 +26,11 @@ LogBox.ignoreLogs([
 
 const App = () => {
   useEffect(() => {
-    // Инициализация темы
     initializeTheme();
-    
-    // Запрос разрешений на уведомления
-    requestNotificationPermissions();
+    // Запрос разрешений — с задержкой и без краша при ошибке
+    setTimeout(() => {
+      requestNotificationPermissions().catch(() => {});
+    }, 500);
   }, []);
 
   return (
