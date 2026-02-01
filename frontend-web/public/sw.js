@@ -34,8 +34,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
-  // Для index.html и корня - всегда запрашивать с сервера
-  if (url.pathname === '/' || url.pathname === '/index.html') {
+  // Для index.html, download.html и корня - всегда с сервера, не кешировать
+  if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/download.html') {
     event.respondWith(
       fetch(event.request, {
         cache: 'no-store',

@@ -11,12 +11,13 @@ react {
     /* Variants */
     debuggableVariants = ["liteDebug", "prodDebug"]
     
-    /* Bundling */
-    bundleCommand = "ram-bundle"
+    /* Bundling - use regular bundle (RAM format has sourcemap compose issues) */
+    bundleCommand = "bundle"
 }
 
 def enableProguardInReleaseBuilds = true
 def jscFlavor = 'org.webkit:android-jsc:+'
+def hermesEnabled = true
 
 android {
     ndkVersion rootProject.ext.ndkVersion
@@ -48,6 +49,11 @@ android {
                 keyPassword MESSENGER_UPLOAD_KEY_PASSWORD
             }
         }
+    }
+
+    packaging {
+        pickFirst '**/libc++_shared.so'
+        pickFirst '**/libfbjni.so'
     }
 
     buildTypes {

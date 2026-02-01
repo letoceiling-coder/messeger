@@ -66,6 +66,11 @@ echo "🔗 Обновление симлинка..."
 rm -f /var/www/messager/backend/uploads
 ln -sf /var/www/messenger/backend/uploads /var/www/messager/backend/uploads
 
+echo "📋 Обновление nginx (download.html, downloads)..."
+if [ -f /var/www/messager/nginx/messager-vps.conf ]; then
+    sudo cp /var/www/messager/nginx/messager-vps.conf /etc/nginx/sites-available/messager
+fi
+
 echo "♻️ Перезапуск сервисов..."
 pm2 restart messenger-api
 sudo systemctl reload nginx

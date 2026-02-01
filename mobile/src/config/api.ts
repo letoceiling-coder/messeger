@@ -3,9 +3,9 @@
  * Настройки подключения к backend серверу
  */
 
-// ВАЖНО: Замените на ваш реальный IP или домен сервера
-export const API_BASE_URL = 'http://YOUR_SERVER_IP:3001';
-export const WS_BASE_URL = 'ws://YOUR_SERVER_IP:3001';
+// Сервер мессенджера (nginx проксирует /api и /socket.io)
+export const API_BASE_URL = 'http://89.169.39.244/api';
+export const WS_BASE_URL = 'http://89.169.39.244';
 
 // Для локальной разработки:
 // Android эмулятор: 'http://10.0.2.2:3001'

@@ -40,3 +40,6 @@ backend/prisma/*.db-journal
 
 # SSH and credentials (DO NOT COMMIT)
 SSH_ACCESS.md
+
+# Android (локальные секреты)
+mobile/android/app/debug.keystore
