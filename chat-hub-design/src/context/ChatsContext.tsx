@@ -69,6 +69,13 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, user?.id, loadChats]);
 
+  const addChat = useCallback((chat: Chat) => {
+    setChats((prev) => [chat, ...prev]);
+    if (chat.isChannel) {
+      setSubscribedChannelIds((prev) => new Set(prev).add(chat.id));
+    }
+  }, []);
+
   const createDirectChat = useCallback(
     async (otherUserId: string): Promise<Chat | null> => {
       if (!user?.id) return null;
@@ -107,13 +114,6 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
 
   const deleteChat = useCallback((chatId: string) => {
     setChats((prev) => prev.filter((c) => c.id !== chatId));
-  }, []);
-
-  const addChat = useCallback((chat: Chat) => {
-    setChats((prev) => [chat, ...prev]);
-    if (chat.isChannel) {
-      setSubscribedChannelIds((prev) => new Set(prev).add(chat.id));
-    }
   }, []);
 
   const getChatById = useCallback(

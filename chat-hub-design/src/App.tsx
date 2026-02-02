@@ -9,6 +9,7 @@ import { ContactsProvider } from "./context/ContactsContext";
 import { CallProvider } from "./context/CallContext";
 import { MessagesProvider } from "./context/MessagesContext";
 import { FeedProvider } from "./context/FeedContext";
+import { WebSocketProvider } from "./context/WebSocketProvider";
 import MainLayout from "./components/layout/MainLayout";
 import FeedLayout from "./components/layout/FeedLayout";
 import CallOverlay from "./components/call/CallOverlay";
@@ -66,7 +67,7 @@ const App = () => (
           <ContactsProvider>
             <CallProvider>
               <MessagesProvider>
-                {/* <WebSocketProvider> */}
+                <WebSocketProvider>
                 <FeedProvider>
                 <ThemeProvider attribute="class" defaultTheme="system" storageKey="messenger-theme" enableSystem>
                 <TooltipProvider>
@@ -102,6 +103,7 @@ const App = () => (
                 </TooltipProvider>
                 </ThemeProvider>
                 </FeedProvider>
+                </WebSocketProvider>
               </MessagesProvider>
             </CallProvider>
           </ContactsProvider>

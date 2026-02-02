@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     outDir: "dist",
-    sourcemap: true,
+    sourcemap: false,
     minify: "esbuild",
   },
   plugins: [react()],
