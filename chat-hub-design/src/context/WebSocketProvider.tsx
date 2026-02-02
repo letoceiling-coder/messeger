@@ -5,11 +5,16 @@ import { getSocket, disconnectSocket, type MessageReceivedPayload } from '@/serv
 import { WebSocketContext } from './websocket-context';
 import type { Message } from '@/types/messenger';
 
+function parseVoiceDuration(content: string): number | undefined {
+  const m = /\((\d+)с\)/.exec(content);
+  return m ? parseInt(m[1], 10) : undefined;
+}
+
 function payloadToMessage(p: MessageReceivedPayload, currentUserId: string): Message {
   const ts = typeof p.createdAt === 'string' ? new Date(p.createdAt) : new Date();
   const type = (p.messageType as Message['type']) || 'text';
   const mediaUrl = p.mediaUrl ?? (type === 'voice' ? p.audioUrl : null) ?? undefined;
-  return {
+  const msg: Message = {
     id: p.id,
     chatId: p.chatId,
     senderId: p.userId,
@@ -21,6 +26,8 @@ function payloadToMessage(p: MessageReceivedPayload, currentUserId: string): Mes
     replyTo: p.replyToId ?? undefined,
     mediaUrl: mediaUrl ?? undefined,
   };
+  if (type === 'voice') msg.duration = parseVoiceDuration(p.content ?? '');
+  return msg;
 }
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {

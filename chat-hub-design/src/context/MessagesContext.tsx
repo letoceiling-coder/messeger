@@ -150,13 +150,12 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
           currentUserId
         );
         msg.duration = durationSec;
-        addMessageToChat(chatId, msg);
         return msg;
       } catch {
         return null;
       }
     },
-    [currentUserId, addMessageToChat]
+    [currentUserId]
   );
 
   const sendVideoNoteMessage = useCallback(
@@ -171,13 +170,12 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         msg.type = 'video_note';
         msg.videoNoteDuration = durationSec;
         msg.duration = durationSec;
-        addMessageToChat(chatId, msg);
         return msg;
       } catch {
         return null;
       }
     },
-    [currentUserId, addMessageToChat]
+    [currentUserId]
   );
 
   const sendMediaMessage = useCallback(

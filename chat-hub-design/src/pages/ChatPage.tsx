@@ -79,6 +79,7 @@ const ChatPage = () => {
   const [recordingVideoNote, setRecordingVideoNote] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordStartTimeRef = useRef<number>(0);
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
   const [loadedMediaIds, setLoadedMediaIds] = useState<Set<string>>(new Set());
 
@@ -100,12 +101,17 @@ const ChatPage = () => {
     return getChatById(chatId);
   }, [chatId, getChatById]);
   const messages = chatId ? getMessages(chatId) : [];
-  /** В канале показываем только посты (без комментариев в ленте) */
+  /** В канале показываем только посты (без комментариев в ленте). Дедупликация по id. */
   const messagesToShow = useMemo(() => {
-    if (chat?.isChannel && chatId) {
-      return messages.filter((m) => !m.replyTo);
-    }
-    return messages;
+    const base = chat?.isChannel && chatId
+      ? messages.filter((m) => !m.replyTo)
+      : messages;
+    const seen = new Set<string>();
+    return base.filter((m) => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
   }, [messages, chat?.isChannel, chatId]);
   const setMessages = useCallback(
     (updater: (prev: Message[]) => Message[]) => {
@@ -152,7 +158,7 @@ const ChatPage = () => {
     return () => { cancelled = true; };
   }, [recordingVideoNote, startVideoNoteRecording]);
 
-  // Recording timer
+  // Recording timer (используем Date.now для надёжного отображения)
   useEffect(() => {
     if (!recordingVoice && !recordingVideoNote) {
       if (recordTimerRef.current) {
@@ -162,9 +168,11 @@ const ChatPage = () => {
       setRecordSeconds(0);
       return;
     }
-    recordTimerRef.current = setInterval(() => {
-      setRecordSeconds((s) => s + 1);
-    }, 1000);
+    recordStartTimeRef.current = Date.now();
+    setRecordSeconds(0);
+    const tick = () => setRecordSeconds(Math.max(0, Math.floor((Date.now() - recordStartTimeRef.current) / 1000)));
+    tick();
+    recordTimerRef.current = setInterval(tick, 1000);
     return () => {
       if (recordTimerRef.current) clearInterval(recordTimerRef.current);
     };
@@ -173,9 +181,8 @@ const ChatPage = () => {
   const prevMessagesLenRef = useRef(0);
   const userScrolledUpRef = useRef(false);
 
-  // Scroll to bottom only when: we sent a message, or we're already near bottom
+  // Скролл вниз только когда отправили сообщение (чтобы не дёргался при скролле вверх)
   useEffect(() => {
-    const el = messagesContainerRef.current;
     const len = messages.length;
     const prevLen = prevMessagesLenRef.current;
     prevMessagesLenRef.current = len;
@@ -184,9 +191,8 @@ const ChatPage = () => {
 
     const lastMsg = messages[len - 1];
     const weJustSent = len > prevLen && lastMsg?.isOutgoing;
-    const nearBottom = el ? el.scrollHeight - el.scrollTop - el.clientHeight < 150 : true;
 
-    if (weJustSent || nearBottom) {
+    if (weJustSent) {
       userScrolledUpRef.current = false;
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     } else if (len > prevLen) {
