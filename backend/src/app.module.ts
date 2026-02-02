@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
+import { SmscModule } from './smsc/smsc.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { ChatsModule } from './chats/chats.module';
@@ -15,6 +16,7 @@ import { HealthController } from './health.controller';
       isGlobal: true,
     }),
     PrismaModule,
+    SmscModule,
     AuthModule,
     UsersModule,
     ChatsModule,

@@ -4,6 +4,8 @@ import { TelegramAuthService } from './telegram-auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { TelegramAuthDto } from './dto/telegram-auth.dto';
+import { SendCodeDto } from './dto/send-code.dto';
+import { VerifyCodeDto } from './dto/verify-code.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 
 @Controller('auth')
@@ -12,6 +14,18 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly telegramAuthService: TelegramAuthService,
   ) {}
+
+  @Post('send-code')
+  @HttpCode(HttpStatus.OK)
+  async sendCode(@Body() dto: SendCodeDto): Promise<{ success: boolean }> {
+    return this.authService.sendCode(dto);
+  }
+
+  @Post('verify-code')
+  @HttpCode(HttpStatus.OK)
+  async verifyCode(@Body() dto: VerifyCodeDto): Promise<AuthResponseDto> {
+    return this.authService.verifyCode(dto);
+  }
 
   @Post('register')
   @HttpCode(HttpStatus.CREATED)

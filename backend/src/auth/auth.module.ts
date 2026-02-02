@@ -5,13 +5,16 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { TelegramAuthService } from './telegram-auth.service';
+import { SmsCodeService } from './sms-code.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { PrismaModule } from '../prisma/prisma.module';
+import { SmscModule } from '../smsc/smsc.module';
 
 @Module({
   imports: [
     PassportModule,
     PrismaModule,
+    SmscModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -24,7 +27,7 @@ import { PrismaModule } from '../prisma/prisma.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, TelegramAuthService, JwtStrategy],
+  providers: [AuthService, TelegramAuthService, SmsCodeService, JwtStrategy],
   exports: [AuthService, TelegramAuthService],
 })
 export class AuthModule {}
