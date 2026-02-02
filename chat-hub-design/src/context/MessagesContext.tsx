@@ -1,75 +1,101 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type { Message, MessageReaction } from '@/types/messenger';
-import { getMessagesForChat } from '@/data/mockData';
+import { useAuth } from '@/context/AuthContext';
+import { api } from '@/services/api';
+import { mapApiMessageToMessage, type ApiMessage } from '@/services/messageMapper';
 import { MESSAGES_PAGE_SIZE } from '@/constants';
 
-const CURRENT_USER_ID = 'user-1';
-
 interface MessagesContextValue {
-  /** Последние N сообщений чата (N = MESSAGES_PAGE_SIZE + подгрузки при скролле вверх) */
   getMessages: (chatId: string) => Message[];
-  /** Все сообщения чата без лимита */
   getAllMessages: (chatId: string) => Message[];
   setMessagesForChat: (chatId: string, updater: (prev: Message[]) => Message[]) => void;
   addMessageToChat: (chatId: string, message: Message) => void;
-  /** Удалить сообщение (например свой комментарий) */
   deleteMessage: (chatId: string, messageId: string) => void;
-  /** Обновить реакцию на сообщение (канал/пост). add: true — поставить, false — убрать */
   updateMessageReaction: (chatId: string, messageId: string, emoji: string, add: boolean) => void;
-  /** Увеличить счётчик просмотров поста (канал) */
   incrementViews: (chatId: string, messageId: string) => void;
-  /** Подгрузить более ранние сообщения (при скролле вверх). При API — запрос к серверу. */
   loadMoreMessages: (chatId: string) => void;
-  /** Есть ли ещё более ранние сообщения для подгрузки */
   hasMoreOlder: (chatId: string) => boolean;
+  /** Загрузить сообщения чата (вызывать при открытии чата) */
+  loadMessagesForChat: (chatId: string) => Promise<void>;
+  messagesLoading: Record<string, boolean>;
+  hasMoreByChat: Record<string, boolean>;
 }
 
 const MessagesContext = createContext<MessagesContextValue | null>(null);
 
 export function MessagesProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const currentUserId = user?.id ?? '';
   const [messagesByChat, setMessagesByChat] = useState<Record<string, Message[]>>({});
-  /** По каждому чату: сколько последних сообщений показывать (при скролле вверх увеличивается) */
-  const [visibleLimitByChat, setVisibleLimitByChat] = useState<Record<string, number>>({});
+  const [offsetByChat, setOffsetByChat] = useState<Record<string, number>>({});
+  const [hasMoreByChat, setHasMoreByChat] = useState<Record<string, boolean>>({});
+  const [messagesLoading, setMessagesLoading] = useState<Record<string, boolean>>({});
 
   const getFullMessages = useCallback(
-    (chatId: string): Message[] => {
-      if (messagesByChat[chatId]) return messagesByChat[chatId];
-      return getMessagesForChat(chatId);
-    },
+    (chatId: string): Message[] => messagesByChat[chatId] ?? [],
     [messagesByChat]
   );
 
-  /** Возвращает последние N сообщений (N = visibleLimit для этого чата) */
   const getMessages = useCallback(
-    (chatId: string): Message[] => {
-      const all = getFullMessages(chatId);
-      const limit = visibleLimitByChat[chatId] ?? MESSAGES_PAGE_SIZE;
-      return all.length <= limit ? all : all.slice(-limit);
-    },
-    [getFullMessages, visibleLimitByChat]
+    (chatId: string): Message[] => getFullMessages(chatId),
+    [getFullMessages]
   );
 
-  const loadMoreMessages = useCallback((chatId: string) => {
-    setVisibleLimitByChat((prev) => {
-      const current = prev[chatId] ?? MESSAGES_PAGE_SIZE;
-      return { ...prev, [chatId]: current + MESSAGES_PAGE_SIZE };
-    });
-    // При подключении API: здесь запрос за более ранними сообщениями и append в messagesByChat
-  }, []);
+  const loadMessagesForChat = useCallback(
+    async (chatId: string, append = false) => {
+      if (!currentUserId) return;
+      const offset = append ? offsetByChat[chatId] ?? MESSAGES_PAGE_SIZE : 0;
+      if (!append) setMessagesLoading((prev) => ({ ...prev, [chatId]: true }));
+      try {
+        const data = await api.get<ApiMessage[]>(
+          `/messages?chatId=${encodeURIComponent(chatId)}&limit=${MESSAGES_PAGE_SIZE}&offset=${offset}`
+        );
+        const list = Array.isArray(data) ? data : [];
+        const mapped = list.map((m) => mapApiMessageToMessage(m, currentUserId));
+        const ordered = [...mapped].reverse();
+        setMessagesByChat((prev) => {
+          const existing = prev[chatId] ?? [];
+          if (append) {
+            const existingIds = new Set(existing.map((e) => e.id));
+            const toPrepend = ordered.filter((m) => !existingIds.has(m.id));
+            return { ...prev, [chatId]: [...toPrepend, ...existing] };
+          }
+          return { ...prev, [chatId]: ordered };
+        });
+        setHasMoreByChat((prev) => ({
+          ...prev,
+          [chatId]: list.length >= MESSAGES_PAGE_SIZE,
+        }));
+        if (append) {
+          setOffsetByChat((prev) => ({ ...prev, [chatId]: offset + MESSAGES_PAGE_SIZE }));
+        } else {
+          setOffsetByChat((prev) => ({ ...prev, [chatId]: MESSAGES_PAGE_SIZE }));
+        }
+      } finally {
+        setMessagesLoading((prev) => ({ ...prev, [chatId]: false }));
+      }
+    },
+    [currentUserId, offsetByChat]
+  );
+
+  const loadMoreMessages = useCallback(
+    (chatId: string) => {
+      if (hasMoreByChat[chatId] !== false && !messagesLoading[chatId]) {
+        loadMessagesForChat(chatId, true);
+      }
+    },
+    [hasMoreByChat, messagesLoading, loadMessagesForChat]
+  );
 
   const hasMoreOlder = useCallback(
-    (chatId: string): boolean => {
-      const all = getFullMessages(chatId);
-      const limit = visibleLimitByChat[chatId] ?? MESSAGES_PAGE_SIZE;
-      return all.length > limit;
-    },
-    [getFullMessages, visibleLimitByChat]
+    (chatId: string): boolean => hasMoreByChat[chatId] ?? false,
+    [hasMoreByChat]
   );
 
   const setMessagesForChat = useCallback((chatId: string, updater: (prev: Message[]) => Message[]) => {
     setMessagesByChat((prev) => ({
       ...prev,
-      [chatId]: updater(prev[chatId] ?? getMessagesForChat(chatId)),
+      [chatId]: updater(prev[chatId] ?? []),
     }));
   }, []);
 
@@ -84,7 +110,6 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
     [setMessagesForChat]
   );
 
-  /** Реакция на публикацию/комментарий. Одна реакция на пользователя: tap по другой → меняет свою. */
   const updateMessageReaction = useCallback(
     (chatId: string, messageId: string, emoji: string, add: boolean) => {
       setMessagesForChat(chatId, (prev) =>
@@ -92,29 +117,28 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
           if (m.id !== messageId) return m;
           let reactions: MessageReaction[] = [...(m.reactions ?? [])];
           if (add) {
-            // Убрать текущего пользователя из всех реакций (одна реакция на пользователя)
             reactions = reactions
               .map((r) => {
-                const hadUser = (r.userIds ?? []).includes(CURRENT_USER_ID);
-                const nextUserIds = (r.userIds ?? []).filter((id) => id !== CURRENT_USER_ID);
+                const hadUser = (r.userIds ?? []).includes(currentUserId);
+                const nextUserIds = (r.userIds ?? []).filter((id) => id !== currentUserId);
                 const nextCount = hadUser ? r.count - 1 : r.count;
                 return { ...r, userIds: nextUserIds, count: nextCount };
               })
               .filter((r) => r.count > 0);
-            let r = reactions.find((x) => x.emoji === emoji);
+            const r = reactions.find((x) => x.emoji === emoji);
             if (!r) {
-              reactions = [...reactions, { emoji, count: 1, userIds: [CURRENT_USER_ID] }];
+              reactions = [...reactions, { emoji, count: 1, userIds: [currentUserId] }];
             } else {
               reactions = reactions.map((x) =>
                 x.emoji === emoji
-                  ? { ...x, count: x.count + 1, userIds: [...(x.userIds ?? []), CURRENT_USER_ID] }
+                  ? { ...x, count: x.count + 1, userIds: [...(x.userIds ?? []), currentUserId] }
                   : x
               );
             }
           } else {
             const r = reactions.find((x) => x.emoji === emoji);
-            if (!r || !(r.userIds ?? []).includes(CURRENT_USER_ID)) return m;
-            const nextUserIds = (r.userIds ?? []).filter((id) => id !== CURRENT_USER_ID);
+            if (!r || !(r.userIds ?? []).includes(currentUserId)) return m;
+            const nextUserIds = (r.userIds ?? []).filter((id) => id !== currentUserId);
             const nextCount = r.count - 1;
             if (nextCount <= 0) {
               reactions = reactions.filter((x) => x.emoji !== emoji);
@@ -128,7 +152,7 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         })
       );
     },
-    [setMessagesForChat]
+    [setMessagesForChat, currentUserId]
   );
 
   const incrementViews = useCallback(
@@ -152,6 +176,9 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
     incrementViews,
     loadMoreMessages,
     hasMoreOlder,
+    loadMessagesForChat,
+    messagesLoading,
+    hasMoreByChat,
   };
 
   return <MessagesContext.Provider value={value}>{children}</MessagesContext.Provider>;

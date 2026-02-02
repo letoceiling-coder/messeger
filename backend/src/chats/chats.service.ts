@@ -364,6 +364,14 @@ export class ChatsService {
             },
           },
         },
+        messages: {
+          where: { isDeleted: false },
+          take: 1,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            user: { select: { id: true, username: true } },
+          },
+        },
       },
       orderBy: {
         lastMessageAt: 'desc',
@@ -388,10 +396,32 @@ export class ChatsService {
       unreadByChat[cid] = (unreadByChat[cid] || 0) + 1;
     });
 
-    return chats.map((chat) => ({
-      ...chat,
-      unreadCount: unreadByChat[chat.id] ?? 0,
-    }));
+    return chats.map((chat) => {
+      const lastMsg = chat.messages[0];
+      const lastMessage = lastMsg
+        ? {
+            id: lastMsg.id,
+            chatId: lastMsg.chatId,
+            senderId: lastMsg.userId,
+            type: lastMsg.messageType,
+            content: lastMsg.content || '',
+            timestamp: lastMsg.createdAt,
+            isOutgoing: lastMsg.userId === userId,
+            replyToId: lastMsg.replyToId,
+            isEdited: lastMsg.isEdited,
+            audioUrl: lastMsg.audioUrl,
+            mediaUrl: lastMsg.mediaUrl,
+            fileName: lastMsg.fileName,
+            fileSize: lastMsg.fileSize,
+          }
+        : null;
+      const { messages, ...rest } = chat;
+      return {
+        ...rest,
+        lastMessage,
+        unreadCount: unreadByChat[chat.id] ?? 0,
+      };
+    });
   }
 
   async getChat(chatId: string, userId: string) {

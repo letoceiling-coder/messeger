@@ -369,6 +369,7 @@ const ChatListItem = ({
           {/* Avatar with online pulse */}
           <div className="relative">
             <UserAvatar
+              src={chat.avatar}
               name={chat.name}
               size="lg"
               isOnline={!chat.isGroup && !chat.isBot && !chat.isChannel && chat.isOnline}

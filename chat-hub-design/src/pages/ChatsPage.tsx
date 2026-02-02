@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MessageCircle } from 'lucide-react';
 import ChatListHeader from '@/components/chats/ChatListHeader';
@@ -24,25 +24,19 @@ import {
 
 const ChatsPage = () => {
   const navigate = useNavigate();
-  const { chats, pinChat, muteChat, archiveChat, deleteChat } = useChats();
+  const { chats, chatsLoading, chatsError, refreshChats, pinChat, muteChat, archiveChat, deleteChat } = useChats();
   const { getMessages } = useMessages();
   const [searchQuery, setSearchQuery] = useState('');
   const [chatToDelete, setChatToDelete] = useState<Chat | null>(null);
   const [openedChatId, setOpenedChatId] = useState<string | null>(null);
-  const [initialLoad, setInitialLoad] = useState(true);
 
   const doRefresh = async () => {
-    await new Promise((r) => setTimeout(r, 600));
+    await refreshChats();
   };
   const { pullY, refreshing, progress, handlers } = usePullToRefresh({
     onRefresh: doRefresh,
     enabled: true,
   });
-
-  useEffect(() => {
-    const t = setTimeout(() => setInitialLoad(false), 350);
-    return () => clearTimeout(t);
-  }, []);
 
   const sortedChats = useMemo(() => {
     let filtered = [...chats].filter((chat) => !chat.isArchived);
@@ -87,8 +81,10 @@ const ChatsPage = () => {
           className="flex-1 min-h-0 overflow-auto divide-y divide-border"
           style={{ touchAction: 'pan-y' }}
         >
-          {initialLoad ? (
+          {chatsLoading && chats.length === 0 ? (
             <ChatListSkeleton />
+          ) : chatsError ? (
+            <div className="p-4 text-center text-destructive text-sm">{chatsError}</div>
           ) : sortedChats.length > 0 ? (
             sortedChats.map((chat) => (
               <ChatListItem

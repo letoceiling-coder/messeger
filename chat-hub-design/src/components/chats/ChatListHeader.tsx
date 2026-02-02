@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import UserAvatar from '@/components/common/Avatar';
 import OnlinePulse from '@/components/common/OnlinePulse';
-import { currentUser } from '@/data/mockData';
+import { useAuth } from '@/context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 
@@ -14,8 +14,10 @@ interface ChatListHeaderProps {
 }
 
 const ChatListHeader = ({ onSearch, searchQuery }: ChatListHeaderProps) => {
+  const { user } = useAuth();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const navigate = useNavigate();
+  const displayName = user?.username || user?.phone || user?.email || 'Пользователь';
 
   const handleSearchToggle = () => {
     if (isSearchOpen) {
@@ -68,7 +70,8 @@ const ChatListHeader = ({ onSearch, searchQuery }: ChatListHeaderProps) => {
                 className="relative touch-feedback rounded-full"
               >
                 <UserAvatar 
-                  name={currentUser.name} 
+                  src={user?.avatarUrl}
+                  name={displayName} 
                   size="md"
                   isOnline
                 />

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Edit, Share2, Phone, AtSign, Mail, Calendar, Camera, Video, X, Radio, LayoutGrid } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import UserAvatar from '@/components/common/Avatar';
-import { currentUser } from '@/data/mockData';
+import { useAuth } from '@/context/AuthContext';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
@@ -14,18 +14,28 @@ const PROFILE_VIDEO_MAX_SEC = 5;
 
 const ProfilePage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
   const [isEditing, setIsEditing] = useState(false);
-  const [name, setName] = useState(currentUser.name);
-  const [username, setUsername] = useState(currentUser.username ?? '');
-  const [email, setEmail] = useState(currentUser.email ?? '');
-  const [dateOfBirth, setDateOfBirth] = useState(currentUser.dateOfBirth ?? '');
-  const [bio, setBio] = useState(currentUser.bio ?? '');
-  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(currentUser.avatar);
-  const [profileVideoUrl, setProfileVideoUrl] = useState<string | undefined>(currentUser.profileVideoUrl);
+  const [name, setName] = useState(user?.username ?? '');
+  const [username, setUsername] = useState(user?.username ?? '');
+  const [email, setEmail] = useState(user?.email ?? '');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [bio, setBio] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(user?.avatarUrl);
+  const [profileVideoUrl, setProfileVideoUrl] = useState<string | undefined>();
   const [videoError, setVideoError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      setName(user.username ?? '');
+      setUsername(user.username ?? '');
+      setEmail(user.email ?? '');
+      setAvatarUrl(user.avatarUrl);
+    }
+  }, [user]);
 
   const handleSave = useCallback(() => {
     // При API: сохранить на сервер
@@ -33,16 +43,16 @@ const ProfilePage = () => {
   }, []);
 
   const handleCancel = useCallback(() => {
-    setName(currentUser.name);
-    setUsername(currentUser.username ?? '');
-    setEmail(currentUser.email ?? '');
-    setDateOfBirth(currentUser.dateOfBirth ?? '');
-    setBio(currentUser.bio ?? '');
-    setAvatarUrl(currentUser.avatar);
-    setProfileVideoUrl(currentUser.profileVideoUrl);
+    setName(user?.username ?? '');
+    setUsername(user?.username ?? '');
+    setEmail(user?.email ?? '');
+    setDateOfBirth('');
+    setBio('');
+    setAvatarUrl(user?.avatarUrl);
+    setProfileVideoUrl(undefined);
     setVideoError(null);
     setIsEditing(false);
-  }, []);
+  }, [user]);
 
   const handleAvatarChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -158,13 +168,13 @@ const ProfilePage = () => {
               </p>
             )}
             {bio && <p className="mt-4 text-center text-muted-foreground">{bio}</p>}
-            {currentUser.phone && (
+            {user?.phone && (
               <a
-                href={`tel:${currentUser.phone.replace(/\s/g, '')}`}
+                href={`tel:${user.phone.replace(/\s/g, '')}`}
                 className="mt-4 flex items-center gap-2 text-primary"
               >
                 <Phone className="h-4 w-4" />
-                {currentUser.phone}
+                {user.phone}
               </a>
             )}
 

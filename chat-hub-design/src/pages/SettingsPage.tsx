@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import UserAvatar from '@/components/common/Avatar';
-import { currentUser, defaultSettings } from '@/data/mockData';
+import { defaultSettings } from '@/data/mockData';
 import { Settings } from '@/types/messenger';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -89,7 +89,8 @@ const applyFontSize = (size: 'small' | 'medium' | 'large') => {
 
 const SettingsPage = () => {
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
+  const displayName = user?.username || user?.phone || user?.email || 'Пользователь';
   const { theme, setTheme } = useTheme();
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [logoutOpen, setLogoutOpen] = useState(false);
@@ -138,25 +139,19 @@ const SettingsPage = () => {
             <div className="relative">
               <div className="p-0.5 rounded-full bg-gradient-to-br from-primary via-primary/80 to-primary/60">
                 <div className="p-0.5 rounded-full bg-background">
-                  <UserAvatar name={currentUser.name} size="xl" isOnline />
+                  <UserAvatar src={user?.avatarUrl} name={displayName} size="xl" isOnline />
                 </div>
               </div>
               {/* Online indicator */}
               <span className="absolute bottom-1 right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-background" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-lg font-semibold truncate">{currentUser.name}</p>
-              <p className="text-sm text-muted-foreground truncate">@{currentUser.username}</p>
-              <p className="text-sm text-muted-foreground truncate">{currentUser.phone}</p>
+              <p className="text-lg font-semibold truncate">{displayName}</p>
+              <p className="text-sm text-muted-foreground truncate">@{user?.username}</p>
+              <p className="text-sm text-muted-foreground truncate">{user?.phone || user?.email}</p>
             </div>
             <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
           </div>
-          {currentUser.bio && (
-            <div className="mt-3 pt-3 border-t border-border">
-              <p className="text-sm text-muted-foreground">О себе</p>
-              <p className="mt-1 text-sm">{currentUser.bio}</p>
-            </div>
-          )}
         </div>
 
         {/* Settings Sections with colorful icons */}

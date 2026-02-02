@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import UserAvatar from '@/components/common/Avatar';
 import OnlinePulse from '@/components/common/OnlinePulse';
 import { formatMessageTime, formatLastSeen, formatViews } from '@/data/mockData';
+import { useAuth } from '@/context/AuthContext';
 import { useContacts } from '@/context/ContactsContext';
 import { useChats } from '@/context/ChatsContext';
 import { useCall } from '@/context/CallContext';
@@ -87,10 +88,11 @@ const ChatPage = () => {
     cancelRecording: cancelVideoNoteRecording,
   } = useVideoNoteRecorder();
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
+  const { user } = useAuth();
   const { getChatById, chats, subscribeToChannel, unsubscribeFromChannel, isChannelSubscribed } = useChats();
   const { contacts } = useContacts();
   const { startOutgoingCall } = useCall();
-  const { getMessages, setMessagesForChat, addMessageToChat, updateMessageReaction, loadMoreMessages, hasMoreOlder } = useMessages();
+  const { getMessages, setMessagesForChat, addMessageToChat, updateMessageReaction, loadMoreMessages, hasMoreOlder, loadMessagesForChat } = useMessages();
   const chat = useMemo(() => {
     if (!chatId) return null;
     return getChatById(chatId);
@@ -129,6 +131,11 @@ const ChatPage = () => {
   useEffect(() => {
     if (chatId && !chat) navigate('/', { replace: true });
   }, [chatId, chat, navigate]);
+
+  // Load messages when chat opens
+  useEffect(() => {
+    if (chatId) loadMessagesForChat(chatId);
+  }, [chatId, loadMessagesForChat]);
 
   // Start video note recording when UI is shown (so video ref is mounted)
   useEffect(() => {
@@ -215,7 +222,7 @@ const ChatPage = () => {
     const newMessage: Message = {
       id: `msg-${Date.now()}`,
       chatId,
-      senderId: 'user-1',
+      senderId: user?.id ?? '',
       type: 'text',
       content: text,
       timestamp: new Date(),
@@ -276,7 +283,7 @@ const ChatPage = () => {
       newMessages.push({
         id: `msg-${Date.now()}-${i}`,
         chatId,
-        senderId: 'user-1',
+        senderId: user?.id ?? '',
         type: isVideo ? 'video' : 'image',
         content: isVideo ? 'Видео' : 'Фото',
         timestamp: new Date(),
@@ -319,7 +326,7 @@ const ChatPage = () => {
       {
         id: `msg-${Date.now()}`,
         chatId,
-        senderId: 'user-1',
+        senderId: user?.id ?? '',
         type: 'contact',
         content: contact.name,
         timestamp: new Date(),
@@ -341,7 +348,7 @@ const ChatPage = () => {
         {
           id: `msg-${Date.now()}`,
           chatId,
-          senderId: 'user-1',
+          senderId: user?.id ?? '',
           type: 'sticker',
           content: sticker.emoji ?? 'Стикер',
           timestamp: new Date(),
@@ -962,6 +969,7 @@ const ChatPage = () => {
                           onReaction={(emoji, add) => {
                             if (chatId) updateMessageReaction(chatId, message.id, emoji, add);
                           }}
+                          currentUserId={user?.id}
                         />
                       </div>
                     )}
@@ -984,7 +992,7 @@ const ChatPage = () => {
                               addMessageToChat(chatId, {
                                 id: `msg-${Date.now()}`,
                                 chatId,
-                                senderId: 'user-1',
+                                senderId: user?.id ?? '',
                                 type: 'text',
                                 content: text,
                                 timestamp: new Date(),
@@ -998,7 +1006,7 @@ const ChatPage = () => {
                               addMessageToChat(chatId, {
                                 id: `msg-${Date.now()}`,
                                 chatId,
-                                senderId: 'user-1',
+                                senderId: user?.id ?? '',
                                 type: 'text',
                                 content: text,
                                 timestamp: new Date(),
@@ -1153,7 +1161,7 @@ const ChatPage = () => {
                       {
                         id: `msg-${Date.now()}`,
                         chatId,
-                        senderId: 'user-1',
+                        senderId: user?.id ?? '',
                         type: 'video_note',
                         content: 'Видеокружок',
                         timestamp: new Date(),
@@ -1228,7 +1236,7 @@ const ChatPage = () => {
               addMessageToChat(chatId, {
                 id: `msg-${Date.now()}`,
                 chatId,
-                senderId: 'user-1',
+                senderId: user?.id ?? '',
                 type: 'text',
                 content: label,
                 timestamp: new Date(),
@@ -1276,7 +1284,7 @@ const ChatPage = () => {
                       {
                         id: `msg-${Date.now()}`,
                         chatId,
-                        senderId: 'user-1',
+                        senderId: user?.id ?? '',
                         type: 'voice',
                         content: 'Голосовое сообщение',
                         timestamp: new Date(),

@@ -4,8 +4,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import UserAvatar from '@/components/common/Avatar';
-import { formatMessageTime } from '@/data/mockData';
-import { currentUser, getContactById } from '@/data/mockData';
+import { formatMessageTime, getContactById } from '@/data/mockData';
+import { useAuth } from '@/context/AuthContext';
 import { useMessages } from '@/context/MessagesContext';
 import { Send, Reply, Trash2, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -19,11 +19,6 @@ interface CommentsSheetProps {
   channelName: string;
 }
 
-function getSenderName(senderId: string): string {
-  if (senderId === currentUser.id) return 'Вы';
-  return getContactById(senderId)?.name ?? senderId;
-}
-
 export default function CommentsSheet({
   open,
   onOpenChange,
@@ -31,10 +26,17 @@ export default function CommentsSheet({
   post,
   channelName,
 }: CommentsSheetProps) {
+  const { user } = useAuth();
+  const currentUserId = user?.id ?? '';
   const [inputValue, setInputValue] = useState('');
   const [replyToComment, setReplyToComment] = useState<Message | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { getMessages, addMessageToChat, deleteMessage, updateMessageReaction } = useMessages();
+
+  const getSenderName = (senderId: string) => {
+    if (senderId === currentUserId) return 'Вы';
+    return getContactById(senderId)?.name ?? senderId;
+  };
 
   const allMessages = getMessages(chatId);
   const commentIds = new Set<string>([post.id]);
@@ -66,7 +68,7 @@ export default function CommentsSheet({
     addMessageToChat(chatId, {
       id: `comment-${Date.now()}`,
       chatId,
-      senderId: currentUser.id,
+      senderId: currentUserId,
       type: 'text',
       content: text,
       timestamp: new Date(),
@@ -87,7 +89,7 @@ export default function CommentsSheet({
   };
 
   const hasUserReaction = (msg: Message, emoji: string) =>
-    (msg.reactions ?? []).some((r) => r.emoji === emoji && (r.userIds ?? []).includes(currentUser.id));
+    (msg.reactions ?? []).some((r) => r.emoji === emoji && (r.userIds ?? []).includes(currentUserId));
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -170,7 +172,7 @@ export default function CommentsSheet({
                         <Reply className="h-3.5 w-3.5 mr-1" />
                         Ответить
                       </Button>
-                      {msg.senderId === currentUser.id && (
+                      {msg.senderId === currentUserId && (
                         <Button
                           variant="ghost"
                           size="sm"

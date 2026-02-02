@@ -4,22 +4,23 @@ import type { Message } from '@/types/messenger';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import UserAvatar from '@/components/common/Avatar';
-import { formatMessageTime } from '@/data/mockData';
-import { currentUser, getContactById } from '@/data/mockData';
+import { formatMessageTime, getContactById } from '@/data/mockData';
+import { useAuth } from '@/context/AuthContext';
 import { useMessages } from '@/context/MessagesContext';
 import { useChats } from '@/context/ChatsContext';
 import { ArrowLeft, Send, Reply, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
-function getSenderName(senderId: string): string {
-  if (senderId === currentUser.id) return 'Вы';
-  return getContactById(senderId)?.name ?? senderId;
-}
-
 export default function PostCommentsPage() {
   const { chatId, postId } = useParams<{ chatId: string; postId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const currentUserId = user?.id ?? '';
+  const getSenderName = (senderId: string) => {
+    if (senderId === currentUserId) return 'Вы';
+    return getContactById(senderId)?.name ?? senderId;
+  };
   const [inputValue, setInputValue] = useState('');
   const [replyToComment, setReplyToComment] = useState<Message | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -58,7 +59,7 @@ export default function PostCommentsPage() {
     addMessageToChat(chatId, {
       id: `comment-${Date.now()}`,
       chatId,
-      senderId: currentUser.id,
+      senderId: currentUserId,
       type: 'text',
       content: text,
       timestamp: new Date(),
@@ -79,7 +80,7 @@ export default function PostCommentsPage() {
   };
 
   const hasUserReaction = (msg: Message, emoji: string) =>
-    (msg.reactions ?? []).some((r) => r.emoji === emoji && (r.userIds ?? []).includes(currentUser.id));
+    (msg.reactions ?? []).some((r) => r.emoji === emoji && (r.userIds ?? []).includes(currentUserId));
 
   if (!chat || !post) return null;
 

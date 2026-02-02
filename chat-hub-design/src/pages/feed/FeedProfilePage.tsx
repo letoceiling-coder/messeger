@@ -1,33 +1,33 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import UserAvatar from '@/components/common/Avatar';
-import { currentUser } from '@/data/mockData';
+import { useAuth } from '@/context/AuthContext';
 import { useFeed } from '@/context/FeedContext';
 import { PlusSquare, Grid3X3, UserPlus, UserMinus, Heart, MessageCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
-const CURRENT_USER_ID = 'user-1';
-
 /** Профиль пользователя в ленте: подписчики/подписки, галерея постов, подписаться. См. FEED_IMPLEMENTATION_PLAN.md п. 1.2 */
 const FeedProfilePage = () => {
   const { userId } = useParams<{ userId?: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const currentUserId = user?.id ?? '';
   const { posts, getFeedUser, followUser, unfollowUser, isFollowedByCurrentUser } = useFeed();
 
-  const isOwnProfile = !userId || userId === CURRENT_USER_ID;
+  const isOwnProfile = !userId || userId === currentUserId;
   const profileUser = isOwnProfile
-    ? getFeedUser(CURRENT_USER_ID)
+    ? getFeedUser(currentUserId)
     : getFeedUser(userId!);
   const profilePosts = isOwnProfile
-    ? posts.filter((p) => p.authorId === CURRENT_USER_ID)
+    ? posts.filter((p) => p.authorId === currentUserId)
     : (userId ? posts.filter((p) => p.authorId === userId) : []);
 
   const followed = userId ? isFollowedByCurrentUser(userId) : false;
 
-  const displayName = isOwnProfile ? currentUser.name : (profileUser?.name ?? userId ?? '');
-  const displayUsername = isOwnProfile ? currentUser.username : (profileUser?.username ?? '');
-  const displayAvatar = isOwnProfile ? currentUser.avatar : profileUser?.avatar;
+  const displayName = isOwnProfile ? (user?.username ?? user?.phone ?? 'Пользователь') : (profileUser?.name ?? userId ?? '');
+  const displayUsername = isOwnProfile ? (user?.username ?? '') : (profileUser?.username ?? '');
+  const displayAvatar = isOwnProfile ? user?.avatarUrl : profileUser?.avatar;
 
   return (
     <div className="min-h-screen bg-background">
