@@ -17,7 +17,7 @@ AUTH_MODE=both
 ```env
 MAIL_MAILER=smtp
 MAIL_HOST=smtp.beget.com
-MAIL_PORT=465
+MAIL_PORT=587
 MAIL_USERNAME=info@neeklo.ru
 MAIL_PASSWORD=ваш_пароль
 MAIL_FROM=info@neeklo.ru
@@ -27,11 +27,13 @@ MAIL_FROM=info@neeklo.ru
 
 ```env
 MAIL_HOST=smtp.beget.com
-MAIL_PORT=465
+MAIL_PORT=587
 MAIL_USERNAME=info@neeklo.ru
-MAIL_PASSWORD=mJrl*AL0WhuW
+MAIL_PASSWORD=ваш_пароль
 MAIL_FROM=info@neeklo.ru
 ```
+
+> Beget: при таймаутах на 465 используйте порт **587** (STARTTLS).
 
 ## Миграция БД
 

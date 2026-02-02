@@ -21,11 +21,15 @@ export class SmtpService {
       return null;
     }
 
+    const portNum = Number(port);
     this.transporter = nodemailer.createTransport({
       host,
-      port: Number(port),
-      secure: port === 465,
+      port: portNum,
+      secure: portNum === 465,
       auth: { user, pass },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      ...(portNum === 587 && { requireTLS: true }),
     });
 
     return this.transporter;
