@@ -12,7 +12,7 @@ import { MessagesProvider } from "./context/MessagesContext";
 import { FeedProvider } from "./context/FeedContext";
 
 const WebSocketProvider = lazy(() =>
-  import("./context/WebSocketContext").then((m) => ({ default: m.WebSocketProvider }))
+  import("./context/WebSocketProvider").then((m) => ({ default: m.WebSocketProvider }))
 );
 import MainLayout from "./components/layout/MainLayout";
 import FeedLayout from "./components/layout/FeedLayout";

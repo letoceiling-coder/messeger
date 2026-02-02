@@ -11,7 +11,7 @@ import { useContacts } from '@/context/ContactsContext';
 import { useChats } from '@/context/ChatsContext';
 import { useCall } from '@/context/CallContext';
 import { useMessages } from '@/context/MessagesContext';
-import { useWebSocket } from '@/context/WebSocketContext';
+import { useWebSocket } from '@/context/websocket-context';
 import { Message } from '@/types/messenger';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';

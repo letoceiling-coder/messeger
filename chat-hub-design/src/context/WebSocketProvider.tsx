@@ -1,16 +1,9 @@
-import React, { createContext, useContext, useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useMessages } from '@/context/MessagesContext';
 import { getSocket, disconnectSocket, type MessageReceivedPayload } from '@/services/websocket';
+import { WebSocketContext } from './websocket-context';
 import type { Message } from '@/types/messenger';
-
-interface WebSocketContextValue {
-  emitTypingStart: (chatId: string) => void;
-  emitTypingStop: (chatId: string) => void;
-}
-
-const NOOP_WS: WebSocketContextValue = { emitTypingStart: () => {}, emitTypingStop: () => {} };
-const WebSocketContext = createContext<WebSocketContextValue>(NOOP_WS);
 
 function payloadToMessage(p: MessageReceivedPayload, currentUserId: string): Message {
   const ts = typeof p.createdAt === 'string' ? new Date(p.createdAt) : new Date();
@@ -28,12 +21,10 @@ function payloadToMessage(p: MessageReceivedPayload, currentUserId: string): Mes
   };
 }
 
-/** Подключает WebSocket, подписывается на message:received и обновляет MessagesContext */
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const { addMessageToChat, setMessagesForChat } = useMessages();
   const currentUserId = user?.id ?? '';
-  const typingTimeoutRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const emitTypingStart = useCallback((chatId: string) => {
     const s = getSocket(localStorage.getItem('accessToken'));
@@ -93,15 +84,11 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     return () => disconnectSocket();
   }, []);
 
-  const value: WebSocketContextValue = { emitTypingStart, emitTypingStop };
+  const value = { emitTypingStart, emitTypingStop };
 
   return (
     <WebSocketContext.Provider value={value}>
       {children}
     </WebSocketContext.Provider>
   );
-}
-
-export function useWebSocket(): WebSocketContextValue {
-  return useContext(WebSocketContext) ?? NOOP_WS;
 }
