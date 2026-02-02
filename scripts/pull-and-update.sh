@@ -28,26 +28,25 @@ fi
 
 DEPS_FRONT_CHANGED=false
 DEPS_BACK_CHANGED=false
+DEPS_CHAT_HUB_CHANGED=false
 if [ -n "$BEFORE_REF" ]; then
-  git diff --name-only "$BEFORE_REF" HEAD -- frontend-web/package.json frontend-web/package-lock.json 2>/dev/null | grep -q . && DEPS_FRONT_CHANGED=true
+  git diff --name-only "$BEFORE_REF" HEAD -- chat-hub-design/package.json chat-hub-design/package-lock.json 2>/dev/null | grep -q . && DEPS_CHAT_HUB_CHANGED=true
   git diff --name-only "$BEFORE_REF" HEAD -- backend/package.json backend/package-lock.json 2>/dev/null | grep -q . && DEPS_BACK_CHANGED=true
 else
-  DEPS_FRONT_CHANGED=true
+  DEPS_CHAT_HUB_CHANGED=true
   DEPS_BACK_CHANGED=true
 fi
 
-if [ "$DEPS_FRONT_CHANGED" = true ]; then
-  echo -e "${YELLOW}[1/7] npm install (frontend)...${NC}"
-  (cd "$ROOT/frontend-web" && npm ci 2>/dev/null) || (cd "$ROOT/frontend-web" && npm install)
+if [ "$DEPS_CHAT_HUB_CHANGED" = true ]; then
+  echo -e "${YELLOW}[1/7] npm install (chat-hub-design)...${NC}"
+  (cd "$ROOT/chat-hub-design" && npm ci 2>/dev/null) || (cd "$ROOT/chat-hub-design" && npm install)
 else
-  echo -e "${YELLOW}[1/7] Frontend deps unchanged, skip npm install${NC}"
+  echo -e "${YELLOW}[1/7] chat-hub-design deps unchanged, skip npm install${NC}"
 fi
 cd "$ROOT"
 
-echo -e "${YELLOW}[2/7] Frontend build...${NC}"
-# Удаляем старые .js из src/, чтобы Vite собирал из .tsx/.ts, а не из устаревших скомпилированных .js
-find "$ROOT/frontend-web/src" -name '*.js' -type f -delete 2>/dev/null || true
-cd "$ROOT/frontend-web" && npm run build && cd "$ROOT" || { echo -e "${RED}Frontend build failed${NC}"; exit 1; }
+echo -e "${YELLOW}[2/7] chat-hub-design build (new UI)...${NC}"
+cd "$ROOT/chat-hub-design" && npm run build && cd "$ROOT" || { echo -e "${RED}chat-hub-design build failed${NC}"; exit 1; }
 
 if [ "$DEPS_BACK_CHANGED" = true ]; then
   echo -e "${YELLOW}[3/7] npm install (backend)...${NC}"
@@ -79,9 +78,12 @@ echo -e "${YELLOW}[6/6] PM2 restart...${NC}"
 cd "$ROOT/backend" && pm2 restart messager-backend --update-env || pm2 start ecosystem.config.js --name messager-backend
 pm2 save 2>/dev/null || true
 
-echo -e "${YELLOW}[7/7] Nginx reload...${NC}"
+echo -e "${YELLOW}[7/7] Nginx config + reload...${NC}"
+if [ -f "$ROOT/nginx/messager-vps.conf" ] && [ -d /etc/nginx/sites-available ]; then
+  cp "$ROOT/nginx/messager-vps.conf" /etc/nginx/sites-available/messager 2>/dev/null || true
+fi
 if command -v nginx >/dev/null 2>&1; then
-  (sudo nginx -t 2>/dev/null && (sudo systemctl reload nginx 2>/dev/null || sudo service nginx reload 2>/dev/null)) || true
+  (nginx -t 2>/dev/null && (systemctl reload nginx 2>/dev/null || service nginx reload 2>/dev/null)) || true
 fi
 
 echo -e "${GREEN}=== Done ===${NC}"
