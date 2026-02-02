@@ -31,7 +31,7 @@ async function request<T>(
   const res = await fetch(url, { ...options, headers });
   if (!res.ok) {
     if (res.status === 401) {
-      const isAuthPath = path.includes("auth/send-code") || path.includes("auth/verify-code") || path.includes("auth/login");
+      const isAuthPath = path.includes("auth/send-code") || path.includes("auth/verify-code") || path.includes("auth/login") || path.includes("auth/config");
       if (!isAuthPath && token) {
         localStorage.removeItem("accessToken");
         localStorage.removeItem("user");

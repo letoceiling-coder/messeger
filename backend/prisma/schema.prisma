@@ -44,6 +44,18 @@ model SmsCode {
   @@map("sms_codes")
 }
 
+model EmailCode {
+  id        String   @id @default(uuid())
+  email     String
+  code      String
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email])
+  @@index([expiresAt])
+  @@map("email_codes")
+}
+
 model Chat {
   id              String   @id @default(uuid())
   type            String   @default("direct")

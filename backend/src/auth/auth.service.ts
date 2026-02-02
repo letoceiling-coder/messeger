@@ -14,7 +14,10 @@ import { AuthResponseDto } from './dto/auth-response.dto';
 import { SendCodeDto } from './dto/send-code.dto';
 import { VerifyCodeDto } from './dto/verify-code.dto';
 import { SmsCodeService } from './sms-code.service';
+import { EmailCodeService } from './email-code.service';
 import { normalizePhoneForSmsc } from '../smsc/smsc.service';
+
+type AuthMode = 'phone' | 'email' | 'both';
 
 @Injectable()
 export class AuthService {
@@ -23,7 +26,15 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private smsCodeService: SmsCodeService,
+    private emailCodeService: EmailCodeService,
   ) {}
+
+  getAuthModes(): AuthMode[] {
+    const mode = (this.configService.get<string>('AUTH_MODE') || 'both').toLowerCase();
+    if (mode === 'phone') return ['phone'];
+    if (mode === 'email') return ['email'];
+    return ['phone', 'email'];
+  }
 
   async register(dto: RegisterDto): Promise<AuthResponseDto> {
     console.log('[AUTH] Register attempt:', {
@@ -156,67 +167,79 @@ export class AuthService {
   }
 
   async sendCode(dto: SendCodeDto): Promise<{ success: boolean }> {
-    await this.smsCodeService.sendCode(dto.phone);
+    const modes = this.getAuthModes();
+    const hasPhone = !!dto.phone?.trim();
+    const hasEmail = !!dto.email?.trim();
+
+    if (hasPhone && hasEmail) {
+      throw new BadRequestException('Укажите только телефон или только email');
+    }
+    if (!hasPhone && !hasEmail) {
+      throw new BadRequestException('Укажите телефон или email');
+    }
+
+    if (hasPhone) {
+      if (!modes.includes('phone')) throw new BadRequestException('Авторизация по телефону недоступна');
+      await this.smsCodeService.sendCode(dto.phone!);
+    } else {
+      if (!modes.includes('email')) throw new BadRequestException('Авторизация по email недоступна');
+      await this.emailCodeService.sendCode(dto.email!);
+    }
     return { success: true };
   }
 
   async verifyCode(dto: VerifyCodeDto): Promise<AuthResponseDto> {
-    const ok = await this.smsCodeService.verifyCode(dto.phone, dto.code);
-    if (!ok) {
-      throw new BadRequestException('Неверный или истёкший код');
+    const hasPhone = !!dto.phone?.trim();
+    const hasEmail = !!dto.email?.trim();
+
+    if (hasPhone && hasEmail) throw new BadRequestException('Укажите только телефон или только email');
+    if (!hasPhone && !hasEmail) throw new BadRequestException('Укажите телефон или email');
+
+    let ok: boolean;
+    if (hasPhone) {
+      ok = await this.smsCodeService.verifyCode(dto.phone!, dto.code);
+    } else {
+      ok = await this.emailCodeService.verifyCode(dto.email!, dto.code);
     }
+    if (!ok) throw new BadRequestException('Неверный или истёкший код');
 
-    const normalized = normalizePhoneForSmsc(dto.phone);
-    const formatted = `+7${normalized.slice(1)}`;
-
-    const phoneFormatted = `+${normalized}`;
-    let user = await this.prisma.user.findUnique({
-      where: { phone: phoneFormatted },
-      select: {
-        id: true,
-        phone: true,
-        email: true,
-        username: true,
-        avatarUrl: true,
-      },
-    });
-
-    if (!user) {
-      const username = `user_${normalized.slice(-6)}`;
-      const existingUsername = await this.prisma.user.findUnique({
-        where: { username },
+    if (hasPhone) {
+      const normalized = normalizePhoneForSmsc(dto.phone!);
+      const phoneFormatted = normalized.startsWith('+') ? normalized : `+${normalized}`;
+      let user = await this.prisma.user.findUnique({
+        where: { phone: phoneFormatted },
+        select: { id: true, phone: true, email: true, username: true, avatarUrl: true },
       });
-      const finalUsername = existingUsername
-        ? `user_${normalized.slice(-6)}_${Date.now().toString(36)}`
-        : username;
-
-      user = await this.prisma.user.create({
-        data: {
-          phone: phoneFormatted,
-          username: finalUsername,
-        },
-        select: {
-          id: true,
-          phone: true,
-          email: true,
-          username: true,
-          avatarUrl: true,
-        },
+      if (!user) {
+        const username = `user_${normalized.slice(-6)}`;
+        const existing = await this.prisma.user.findUnique({ where: { username } });
+        const finalUsername = existing ? `user_${normalized.slice(-6)}_${Date.now().toString(36)}` : username;
+        user = await this.prisma.user.create({
+          data: { phone: phoneFormatted, username: finalUsername },
+          select: { id: true, phone: true, email: true, username: true, avatarUrl: true },
+        });
+      }
+      const accessToken = await this.generateToken(user.id);
+      return { accessToken, user: { id: user.id, phone: user.phone ?? undefined, email: user.email ?? undefined, username: user.username, avatarUrl: user.avatarUrl ?? undefined } };
+    } else {
+      const emailNorm = dto.email!.toLowerCase().trim();
+      let user = await this.prisma.user.findUnique({
+        where: { email: emailNorm },
+        select: { id: true, phone: true, email: true, username: true, avatarUrl: true },
       });
+      if (!user) {
+        const base = emailNorm.split('@')[0]?.replace(/\W/g, '') || 'user';
+        const username = base.length >= 3 ? base : `user_${base}`;
+        const existing = await this.prisma.user.findUnique({ where: { username } });
+        const finalUsername = existing ? `${username}_${Date.now().toString(36)}` : username;
+        user = await this.prisma.user.create({
+          data: { email: emailNorm, username: finalUsername },
+          select: { id: true, phone: true, email: true, username: true, avatarUrl: true },
+        });
+      }
+      const accessToken = await this.generateToken(user.id);
+      return { accessToken, user: { id: user.id, phone: user.phone ?? undefined, email: user.email ?? undefined, username: user.username, avatarUrl: user.avatarUrl ?? undefined } };
     }
-
-    const accessToken = await this.generateToken(user.id);
-
-    return {
-      accessToken,
-      user: {
-        id: user.id,
-        phone: user.phone ?? undefined,
-        email: user.email ?? undefined,
-        username: user.username,
-        avatarUrl: user.avatarUrl ?? undefined,
-      },
-    };
   }
 
   async validateUser(userId: string) {

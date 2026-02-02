@@ -6,15 +6,18 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { TelegramAuthService } from './telegram-auth.service';
 import { SmsCodeService } from './sms-code.service';
+import { EmailCodeService } from './email-code.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { PrismaModule } from '../prisma/prisma.module';
 import { SmscModule } from '../smsc/smsc.module';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
   imports: [
     PassportModule,
     PrismaModule,
     SmscModule,
+    MailModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -27,7 +30,7 @@ import { SmscModule } from '../smsc/smsc.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, TelegramAuthService, SmsCodeService, JwtStrategy],
+  providers: [AuthService, TelegramAuthService, SmsCodeService, EmailCodeService, JwtStrategy],
   exports: [AuthService, TelegramAuthService],
 })
 export class AuthModule {}

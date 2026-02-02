@@ -75,7 +75,9 @@ echo -e "${YELLOW}[5/7] Backend build...${NC}"
 cd "$ROOT/backend" && npm run build && cd "$ROOT" || { echo -e "${RED}Backend build failed${NC}"; exit 1; }
 
 echo -e "${YELLOW}[6/6] PM2 restart...${NC}"
-cd "$ROOT/backend" && pm2 restart messager-backend --update-env || pm2 start ecosystem.config.js --name messager-backend
+cd "$ROOT/backend"
+# messenger-api — рабочий процесс на порту 30000; messager-backend часто errored
+pm2 restart messenger-api --update-env 2>/dev/null || pm2 restart messager-backend --update-env 2>/dev/null || pm2 start ecosystem.config.js --name messager-backend
 pm2 save 2>/dev/null || true
 
 echo -e "${YELLOW}[7/7] Nginx config + reload...${NC}"

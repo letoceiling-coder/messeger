@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, Get, HttpCode, HttpStatus } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { TelegramAuthService } from './telegram-auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -14,6 +14,11 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly telegramAuthService: TelegramAuthService,
   ) {}
+
+  @Get('config')
+  getAuthConfig(): { modes: string[] } {
+    return { modes: this.authService.getAuthModes() };
+  }
 
   @Post('send-code')
   @HttpCode(HttpStatus.OK)
