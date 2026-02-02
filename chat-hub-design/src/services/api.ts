@@ -25,8 +25,9 @@ async function request<T>(
     (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
   }
 
-  const base = API_URL.startsWith("http") ? API_URL : "";
-  const url = `${base}${path}`;
+  const base = (API_URL.endsWith("/") ? API_URL.slice(0, -1) : API_URL) || "";
+  const pathNorm = path.startsWith("/") ? path : `/${path}`;
+  const url = base ? `${base}${pathNorm}` : pathNorm;
   const res = await fetch(url, { ...options, headers });
   if (!res.ok) {
     if (res.status === 401) {
