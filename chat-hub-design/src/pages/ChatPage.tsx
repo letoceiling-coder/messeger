@@ -14,7 +14,7 @@ import { useMessages } from '@/context/MessagesContext';
 import { useWebSocket } from '@/context/websocket-context';
 import { Message } from '@/types/messenger';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '@/lib/utils';
+import { cn, getMediaUrl } from '@/lib/utils';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -93,7 +93,7 @@ const ChatPage = () => {
   const { getChatById, chats, subscribeToChannel, unsubscribeFromChannel, isChannelSubscribed } = useChats();
   const { contacts } = useContacts();
   const { startOutgoingCall } = useCall();
-  const { getMessages, setMessagesForChat, addMessageToChat, sendTextMessage, editMessageContent, deleteMessageFromServer, deleteForEveryone, updateMessageReaction, loadMoreMessages, hasMoreOlder, loadMessagesForChat } = useMessages();
+  const { getMessages, setMessagesForChat, addMessageToChat, sendTextMessage, sendVoiceMessage, sendVideoNoteMessage, sendMediaMessage, sendDocumentMessage, editMessageContent, deleteMessageFromServer, deleteForEveryone, updateMessageReaction, loadMoreMessages, hasMoreOlder, loadMessagesForChat } = useMessages();
   const ws = useWebSocket();
   const chat = useMemo(() => {
     if (!chatId) return null;
@@ -252,38 +252,46 @@ const ChatPage = () => {
     textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
   };
 
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const handleAttachSelect = (action: AttachAction) => {
     if (action === 'photo') {
       mediaInputRef.current?.click();
+    } else if (action === 'file') {
+      fileInputRef.current?.click();
     } else if (action === 'contact') {
       setContactPickerOpen(true);
     }
   };
 
-  const handleMediaInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+
+  const handleMediaInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files?.length || !chatId) return;
-    const newMessages: Message[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const url = URL.createObjectURL(file);
-      const isVideo = file.type.startsWith('video/');
-      newMessages.push({
-        id: `msg-${Date.now()}-${i}`,
-        chatId,
-        senderId: user?.id ?? '',
-        type: isVideo ? 'video' : 'image',
-        content: isVideo ? 'Видео' : 'Фото',
-        timestamp: new Date(),
-        status: 'sent',
-        isOutgoing: true,
-        mediaUrl: url,
-        fileName: file.name,
-        fileSize: file.size,
-      } as Message);
+    setUploadingMedia(true);
+    try {
+      for (let i = 0; i < files.length; i++) {
+        await sendMediaMessage(chatId, files[i]);
+      }
+    } finally {
+      setUploadingMedia(false);
+      e.target.value = '';
     }
-    setMessages((prev) => [...prev, ...newMessages]);
-    e.target.value = '';
+  };
+
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length || !chatId) return;
+    setUploadingMedia(true);
+    try {
+      for (let i = 0; i < files.length; i++) {
+        await sendDocumentMessage(chatId, files[i]);
+      }
+    } finally {
+      setUploadingMedia(false);
+      e.target.value = '';
+    }
   };
 
   const handleEmojiSelect = (emoji: string) => {
@@ -777,14 +785,14 @@ const ChatPage = () => {
                           <button
                             type="button"
                             onClick={() => {
-                              setViewerSrc(message.mediaUrl);
+                              setViewerSrc(getMediaUrl(message.mediaUrl));
                               setViewerType('video');
                               setViewerOpen(true);
                             }}
                             className="block w-full text-left"
                           >
                             <video
-                              src={message.mediaUrl}
+                              src={getMediaUrl(message.mediaUrl)}
                               className={cn(
                                 'max-h-[240px] w-full object-cover transition-[filter] duration-200',
                                 !loadedMediaIds.has(message.id) && 'blur-md'
@@ -839,9 +847,13 @@ const ChatPage = () => {
                           }
                         />
                       ) : message.type === 'file' ? (
-                        <div
+                        <a
+                          href={getMediaUrl(message.mediaUrl)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download={message.fileName}
                           className={cn(
-                            'min-w-[var(--message-bubble-min-w)] max-w-[var(--message-bubble-max-w)] rounded-bubble px-3 py-2 shadow-soft flex items-center gap-3',
+                            'flex items-center gap-3 min-w-[var(--message-bubble-min-w)] max-w-[var(--message-bubble-max-w)] rounded-bubble px-3 py-2 shadow-soft hover:opacity-90 transition-opacity',
                             message.isOutgoing
                               ? 'rounded-bubble-outgoing bg-[hsl(var(--message-outgoing))] text-[hsl(var(--message-outgoing-foreground))]'
                               : 'rounded-bubble-incoming bg-[hsl(var(--message-incoming))] text-[hsl(var(--message-incoming-foreground))]'
@@ -862,7 +874,7 @@ const ChatPage = () => {
                               {renderMessageStatus(message)}
                             </div>
                           </div>
-                        </div>
+                        </a>
                       ) : (
                         <div
                           className={cn(
@@ -1138,33 +1150,18 @@ const ChatPage = () => {
               <Button
                 size="lg"
                 className="bg-primary hover:bg-primary/90"
+                disabled={uploadingMedia}
                 onClick={async () => {
                   if (!chatId) return;
                   const result = await stopVideoNoteRecording();
                   if (videoPreviewRef.current) videoPreviewRef.current.srcObject = null;
                   if (result) {
-                    const url = URL.createObjectURL(result.blob);
-                    setMessages((prev) => [
-                      ...prev,
-                      {
-                        id: `msg-${Date.now()}`,
-                        chatId,
-                        senderId: user?.id ?? '',
-                        type: 'video_note',
-                        content: 'Видеокружок',
-                        timestamp: new Date(),
-                        status: 'sent',
-                        isOutgoing: true,
-                        videoNoteDuration: result.durationSec,
-                        duration: result.durationSec,
-                        mediaUrl: url,
-                      } as Message,
-                    ]);
+                    await sendVideoNoteMessage(chatId, result.blob, result.durationSec);
                   }
                   setRecordingVideoNote(false);
                 }}
               >
-                Отправить
+                {uploadingMedia ? 'Отправка…' : 'Отправить'}
               </Button>
             </div>
           </div>
@@ -1261,34 +1258,18 @@ const ChatPage = () => {
             </Button>
             <Button
               size="sm"
+              disabled={uploadingMedia}
               onClick={async () => {
                 if (recordingVoice && chatId) {
                   const result = await stopRecording();
                   if (result) {
-                    const url = URL.createObjectURL(result.blob);
-                    const wf = Array.from({ length: 48 }, () => Math.random() * 0.5 + 0.3);
-                    setMessages((prev) => [
-                      ...prev,
-                      {
-                        id: `msg-${Date.now()}`,
-                        chatId,
-                        senderId: user?.id ?? '',
-                        type: 'voice',
-                        content: 'Голосовое сообщение',
-                        timestamp: new Date(),
-                        status: 'sent',
-                        isOutgoing: true,
-                        duration: result.durationSec,
-                        waveform: wf,
-                        mediaUrl: url,
-                      } as Message,
-                    ]);
+                    await sendVoiceMessage(chatId, result.blob, result.durationSec);
                   }
                 }
                 setRecordingVoice(false);
               }}
             >
-              Отправить
+              {uploadingMedia ? 'Отправка…' : 'Отправить'}
             </Button>
           </div>
         ) : (
@@ -1403,6 +1384,14 @@ const ChatPage = () => {
         multiple
         className="hidden"
         onChange={handleMediaInputChange}
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="*/*"
+        multiple
+        className="hidden"
+        onChange={handleFileInputChange}
       />
 
       <AttachSheet

@@ -230,7 +230,7 @@ export class MessagesService {
     const result = await this.prisma.$transaction(async (tx) => {
       const content =
         dto.caption?.trim() ||
-        (dto.messageType === 'image' ? 'Фото' : 'Видео');
+        (dto.messageType === 'image' ? 'Фото' : dto.messageType === 'video_note' ? 'Видеокружок' : 'Видео');
       const message = await tx.message.create({
         data: {
           chatId: dto.chatId,

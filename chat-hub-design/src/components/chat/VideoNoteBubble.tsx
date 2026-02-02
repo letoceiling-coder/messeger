@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Message } from '@/types/messenger';
-import { cn } from '@/lib/utils';
+import { cn, getMediaUrl } from '@/lib/utils';
 import { motion } from 'framer-motion';
 
 const SIZE_COMPACT = 200;
@@ -135,7 +135,7 @@ export default function VideoNoteBubble({
           {message.mediaUrl ? (
             <video
               ref={videoRef}
-              src={message.mediaUrl}
+              src={getMediaUrl(message.mediaUrl)}
               className="absolute inset-0 w-full h-full object-cover"
               playsInline
               muted
@@ -145,7 +145,7 @@ export default function VideoNoteBubble({
             />
           ) : message.thumbnailUrl ? (
             <img
-              src={message.thumbnailUrl}
+              src={getMediaUrl(message.thumbnailUrl)}
               alt=""
               className="absolute inset-0 w-full h-full object-cover"
             />

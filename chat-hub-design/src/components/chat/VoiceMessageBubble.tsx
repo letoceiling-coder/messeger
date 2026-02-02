@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Play, Pause } from 'lucide-react';
 import { Message } from '@/types/messenger';
-import { cn } from '@/lib/utils';
+import { cn, getMediaUrl } from '@/lib/utils';
 import { motion } from 'framer-motion';
 
 const WAVEFORM_BARS = 48;
@@ -135,7 +135,7 @@ export default function VoiceMessageBubble({
     isPlaying,
     duration,
     playbackSpeed,
-    message.mediaUrl,
+    getMediaUrl(message.mediaUrl),
     onPlaybackEnd
   );
 

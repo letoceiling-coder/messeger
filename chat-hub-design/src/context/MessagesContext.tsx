@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
 import type { Message, MessageReaction } from '@/types/messenger';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/services/api';
+import { uploadService } from '@/services/upload.service';
 import { mapApiMessageToMessage, type ApiMessage } from '@/services/messageMapper';
 import { MESSAGES_PAGE_SIZE } from '@/constants';
 
@@ -12,6 +13,14 @@ interface MessagesContextValue {
   addMessageToChat: (chatId: string, message: Message) => void;
   /** Отправка текста через API */
   sendTextMessage: (chatId: string, content: string, replyToId?: string) => Promise<Message | null>;
+  /** Голосовое сообщение */
+  sendVoiceMessage: (chatId: string, blob: Blob, durationSec: number) => Promise<Message | null>;
+  /** Видеокружок */
+  sendVideoNoteMessage: (chatId: string, blob: Blob, durationSec: number) => Promise<Message | null>;
+  /** Фото или видео */
+  sendMediaMessage: (chatId: string, file: File, caption?: string) => Promise<Message | null>;
+  /** Файл/документ */
+  sendDocumentMessage: (chatId: string, file: File, caption?: string) => Promise<Message | null>;
   /** Редактирование сообщения через API */
   editMessageContent: (chatId: string, messageId: string, content: string) => Promise<boolean>;
   /** Удаление на сервере и локально (у себя) */
@@ -119,6 +128,86 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         if (replyToId) body.replyToId = replyToId;
         const res = await api.post<ApiMessage>('/messages', body);
         const msg = mapApiMessageToMessage(res, currentUserId);
+        addMessageToChat(chatId, msg);
+        return msg;
+      } catch {
+        return null;
+      }
+    },
+    [currentUserId, addMessageToChat]
+  );
+
+  const sendVoiceMessage = useCallback(
+    async (chatId: string, blob: Blob, durationSec: number): Promise<Message | null> => {
+      if (!currentUserId) return null;
+      try {
+        const { message } = await uploadService.uploadAudio(blob, chatId, durationSec);
+        const msg = mapApiMessageToMessage(
+          { ...message, audioUrl: message.audioUrl ?? undefined, messageDeliveries: [{ status: 'sent' }] },
+          currentUserId
+        );
+        msg.duration = durationSec;
+        addMessageToChat(chatId, msg);
+        return msg;
+      } catch {
+        return null;
+      }
+    },
+    [currentUserId, addMessageToChat]
+  );
+
+  const sendVideoNoteMessage = useCallback(
+    async (chatId: string, blob: Blob, durationSec: number): Promise<Message | null> => {
+      if (!currentUserId) return null;
+      try {
+        const { message } = await uploadService.uploadVideo(blob, chatId, undefined, true);
+        const msg = mapApiMessageToMessage(
+          { ...message, messageDeliveries: [{ status: 'sent' }] },
+          currentUserId
+        );
+        msg.type = 'video_note';
+        msg.videoNoteDuration = durationSec;
+        msg.duration = durationSec;
+        addMessageToChat(chatId, msg);
+        return msg;
+      } catch {
+        return null;
+      }
+    },
+    [currentUserId, addMessageToChat]
+  );
+
+  const sendMediaMessage = useCallback(
+    async (chatId: string, file: File, caption?: string): Promise<Message | null> => {
+      if (!currentUserId) return null;
+      try {
+        const isVideo = file.type.startsWith('video/');
+        const { message } = isVideo
+          ? await uploadService.uploadVideo(file, chatId, caption)
+          : await uploadService.uploadImage(file, chatId, caption);
+        const msg = mapApiMessageToMessage(
+          { ...message, messageDeliveries: [{ status: 'sent' }] },
+          currentUserId
+        );
+        addMessageToChat(chatId, msg);
+        return msg;
+      } catch {
+        return null;
+      }
+    },
+    [currentUserId, addMessageToChat]
+  );
+
+  const sendDocumentMessage = useCallback(
+    async (chatId: string, file: File, caption?: string): Promise<Message | null> => {
+      if (!currentUserId) return null;
+      try {
+        const { message } = await uploadService.uploadDocument(file, chatId, caption);
+        const msg = mapApiMessageToMessage(
+          { ...message, messageDeliveries: [{ status: 'sent' }] },
+          currentUserId
+        );
+        msg.type = 'file';
         addMessageToChat(chatId, msg);
         return msg;
       } catch {
@@ -242,6 +331,10 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
     setMessagesForChat,
     addMessageToChat,
     sendTextMessage,
+    sendVoiceMessage,
+    sendVideoNoteMessage,
+    sendMediaMessage,
+    sendDocumentMessage,
     editMessageContent,
     deleteMessageFromServer,
     deleteForEveryone,

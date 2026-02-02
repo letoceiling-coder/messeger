@@ -241,7 +241,7 @@ export class MessagesController {
   )
   async uploadVideo(
     @UploadedFile() file: Express.Multer.File,
-    @Body() body: { chatId: string; caption?: string },
+    @Body() body: { chatId: string; caption?: string; messageType?: 'video' | 'video_note' },
     @CurrentUser() user: any,
   ) {
     if (!file) {
@@ -252,7 +252,7 @@ export class MessagesController {
       chatId: body.chatId,
       userId: user.id,
       mediaUrl,
-      messageType: 'video',
+      messageType: body.messageType === 'video_note' ? 'video_note' : 'video',
       caption: body.caption,
     });
     this.wsGateway.broadcastMessageToChat({
