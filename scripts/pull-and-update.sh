@@ -37,7 +37,7 @@ else
   DEPS_BACK_CHANGED=true
 fi
 
-if [ "$DEPS_CHAT_HUB_CHANGED" = true ] || [ ! -d "$ROOT/chat-hub-design/node_modules" ]; then
+if [ "$DEPS_CHAT_HUB_CHANGED" = true ] || [ ! -d "$ROOT/chat-hub-design/node_modules" ] || [ ! -d "$ROOT/chat-hub-design/node_modules/socket.io-client" ]; then
   echo -e "${YELLOW}[1/7] npm install (chat-hub-design)...${NC}"
   (cd "$ROOT/chat-hub-design" && npm ci 2>/dev/null) || (cd "$ROOT/chat-hub-design" && npm install)
 else
