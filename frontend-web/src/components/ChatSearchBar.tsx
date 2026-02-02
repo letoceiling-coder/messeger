@@ -197,7 +197,7 @@ export const ChatSearchBar = ({ chatId, onResultClick, onClose }: ChatSearchBarP
                         </span>
                       </div>
                       <p className="text-sm text-app-text line-clamp-2">
-                        {highlightText(message.content, query)}
+                        {highlightText(message.content ?? '', query)}
                       </p>
                     </div>
                   </div>

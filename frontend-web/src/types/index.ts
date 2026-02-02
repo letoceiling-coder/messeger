@@ -19,6 +19,7 @@ export interface ChatMemberUser {
 export interface ChatMember {
   id: string;
   userId: string;
+  role?: string;
   user: ChatMemberUser;
 }
 
@@ -87,6 +88,13 @@ export interface Message {
     username: string;
     email?: string;
     avatarUrl?: string;
+  };
+  /** Чат (при глобальном поиске) */
+  chat?: {
+    id: string;
+    type: string;
+    name?: string | null;
+    members?: Array<{ userId: string; user?: { id: string; username: string; avatarUrl?: string } }>;
   };
 }
 

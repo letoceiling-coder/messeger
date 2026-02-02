@@ -47,7 +47,7 @@ export const GlobalSearchModal = ({ isOpen, onClose }: GlobalSearchModalProps) =
       return message.chat.name || 'Группа';
     }
     // Для личных чатов - имя собеседника
-    const otherMember = message.chat?.members?.find((m) => m.userId !== message.userId);
+    const otherMember = message.chat?.members?.find((m: { userId: string }) => m.userId !== message.userId);
     return otherMember?.user?.username || 'Личный чат';
   };
 
@@ -195,7 +195,7 @@ export const GlobalSearchModal = ({ isOpen, onClose }: GlobalSearchModalProps) =
 
                       {/* Текст сообщения */}
                       <p className="text-sm text-app-text line-clamp-2">
-                        {highlightText(message.content, query)}
+                        {highlightText(message.content ?? '', query)}
                       </p>
                     </div>
 

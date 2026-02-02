@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Chat, ChatMemberUser } from '../types';
+import { Chat } from '../types';
 import { chatsService } from '../services/chats.service';
 import { usersService } from '../services/users.service';
 import { useToast } from '../contexts/ToastContext';
@@ -22,7 +22,7 @@ export const GroupChatInfo = ({ chat, isOpen, onClose, onUpdate }: GroupChatInfo
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
 
-  const currentMember = chat.members.find(m => m.userId === user?.id);
+  const currentMember = chat.members?.find(m => m.userId === user?.id);
   const isAdmin = currentMember?.role === 'admin';
 
   const handleSave = async () => {
@@ -91,7 +91,7 @@ export const GroupChatInfo = ({ chat, isOpen, onClose, onUpdate }: GroupChatInfo
     try {
       const results = await usersService.searchUsers(query);
       // Фильтруем пользователей, которые уже в чате
-      const memberIds = new Set(chat.members.map(m => m.userId));
+      const memberIds = new Set((chat.members ?? []).map(m => m.userId));
       setSearchResults(results.filter(u => !memberIds.has(u.id)));
     } catch (error) {
       console.error('Ошибка поиска', error);
@@ -184,7 +184,7 @@ export const GroupChatInfo = ({ chat, isOpen, onClose, onUpdate }: GroupChatInfo
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-app-text">
-                Участники ({chat.members.length})
+                Участники ({(chat.members ?? []).length})
               </h3>
               {isAdmin && (
                 <button
@@ -240,7 +240,7 @@ export const GroupChatInfo = ({ chat, isOpen, onClose, onUpdate }: GroupChatInfo
 
             {/* Список участников */}
             <div className="space-y-2">
-              {chat.members.map((member) => (
+              {(chat.members ?? []).map((member) => (
                 <div
                   key={member.id}
                   className="flex items-center gap-3 p-3 rounded-xl bg-app-bg"
@@ -261,7 +261,7 @@ export const GroupChatInfo = ({ chat, isOpen, onClose, onUpdate }: GroupChatInfo
                   {isAdmin && member.userId !== user?.id && (
                     <div className="flex gap-2">
                       <button
-                        onClick={() => handleToggleRole(member.userId, member.role)}
+                        onClick={() => handleToggleRole(member.userId, member.role ?? 'member')}
                         className="px-2 py-1 text-xs bg-app-surface-hover hover:bg-app-border 
                                  text-app-text rounded transition-colors"
                         title={member.role === 'admin' ? 'Снять админа' : 'Сделать админом'}

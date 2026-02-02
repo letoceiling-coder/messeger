@@ -128,7 +128,7 @@ const FeedPage = () => {
                     <span className="text-xs text-muted-foreground truncate max-w-[64px]">
                       {user?.name ?? authorId}
                     </span>
-                  </motion.button>
+                  </button>
                 );
               })}
             </div>

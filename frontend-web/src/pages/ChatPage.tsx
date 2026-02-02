@@ -8,7 +8,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { VoiceRecorder } from '../components/VoiceRecorder';
 import { VideoCall } from '../components/VideoCall';
 import { MessageInputBar } from '../components/MessageInputBar';
-import { VideoMessagePlayer } from '../components/VideoMessagePlayer';
 import { EmojiPicker } from '../components/EmojiPicker';
 import { AudioMessage, pauseCurrentAudio } from '../components/AudioMessage';
 import { LazyImage } from '../components/LazyImage';
