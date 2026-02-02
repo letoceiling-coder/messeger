@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { SmtpService } from '../mail/smtp.service';
+import { MailService } from '../mail/mail.service';
 
 const CODE_LENGTH = 4;
 const CODE_TTL_MINUTES = 5;
@@ -23,7 +23,7 @@ function normalizeEmail(email: string): string {
 export class EmailCodeService {
   constructor(
     private prisma: PrismaService,
-    private smtpService: SmtpService,
+    private mailService: MailService,
   ) {}
 
   async sendCode(email: string): Promise<void> {
@@ -56,7 +56,7 @@ export class EmailCodeService {
     const text = `Ваш код: ${code}. Действует ${CODE_TTL_MINUTES} минут. Messager.`;
     const html = `<p>Ваш код подтверждения: <strong>${code}</strong></p><p>Действует ${CODE_TTL_MINUTES} минут.</p><p>Messager</p>`;
 
-    const ok = await this.smtpService.sendMail(normalized, subject, text, html);
+    const ok = await this.mailService.sendMail(normalized, subject, text, html);
     if (!ok) {
       throw new BadRequestException('Не удалось отправить письмо. Проверьте настройки почты.');
     }
