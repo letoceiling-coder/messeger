@@ -11,6 +11,7 @@ import { useContacts } from '@/context/ContactsContext';
 import { useChats } from '@/context/ChatsContext';
 import { useCall } from '@/context/CallContext';
 import { useMessages } from '@/context/MessagesContext';
+import { useWebSocket } from '@/context/WebSocketContext';
 import { Message } from '@/types/messenger';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -92,7 +93,8 @@ const ChatPage = () => {
   const { getChatById, chats, subscribeToChannel, unsubscribeFromChannel, isChannelSubscribed } = useChats();
   const { contacts } = useContacts();
   const { startOutgoingCall } = useCall();
-  const { getMessages, setMessagesForChat, addMessageToChat, updateMessageReaction, loadMoreMessages, hasMoreOlder, loadMessagesForChat } = useMessages();
+  const { getMessages, setMessagesForChat, addMessageToChat, sendTextMessage, editMessageContent, deleteMessageFromServer, deleteForEveryone, updateMessageReaction, loadMoreMessages, hasMoreOlder, loadMessagesForChat } = useMessages();
+  const ws = useWebSocket();
   const chat = useMemo(() => {
     if (!chatId) return null;
     return getChatById(chatId);
@@ -203,49 +205,26 @@ const ChatPage = () => {
     return '';
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputValue.trim() || !chatId) return;
     const text = inputValue.trim();
 
     if (editMessageId) {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === editMessageId ? { ...m, content: text, editedAt: new Date() } : m
-        )
-      );
-      setEditMessageId(null);
-      setInputValue('');
-      if (textareaRef.current) textareaRef.current.style.height = 'auto';
+      const ok = await editMessageContent(chatId, editMessageId, text);
+      if (ok) {
+        setEditMessageId(null);
+        setInputValue('');
+        if (textareaRef.current) textareaRef.current.style.height = 'auto';
+      }
       return;
     }
 
-    const newMessage: Message = {
-      id: `msg-${Date.now()}`,
-      chatId,
-      senderId: user?.id ?? '',
-      type: 'text',
-      content: text,
-      timestamp: new Date(),
-      status: 'sent',
-      isOutgoing: true,
-      replyTo: replyToMessage?.id,
-    };
-
-    setMessages((prev) => [...prev, newMessage]);
     setInputValue('');
+    const replyId = replyToMessage?.id;
     setReplyToMessage(null);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
-    setTimeout(() => {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === newMessage.id ? { ...m, status: 'delivered' } : m))
-      );
-    }, 1000);
-    setTimeout(() => {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === newMessage.id ? { ...m, status: 'read' } : m))
-      );
-    }, 2000);
+    await sendTextMessage(chatId, text, replyId);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -255,10 +234,19 @@ const ChatPage = () => {
     }
   };
 
+  const typingStopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInputValue(e.target.value);
-    
-    // Auto-resize
+
+    if (chatId && ws) {
+      ws.emitTypingStart(chatId);
+      if (typingStopRef.current) clearTimeout(typingStopRef.current);
+      typingStopRef.current = setTimeout(() => {
+        ws.emitTypingStop(chatId);
+        typingStopRef.current = null;
+      }, 2000);
+    }
+
     const textarea = e.target;
     textarea.style.height = 'auto';
     textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
@@ -1470,10 +1458,10 @@ const ChatPage = () => {
             <AlertDialogCancel>Отмена</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
+              onClick={async () => {
                 if (!deleteModal || !chatId) return;
-                setMessages((prev) => prev.filter((m) => m.id !== deleteModal.messageId));
-                if (chatId && (pinnedMessageIds[chatId] ?? []).includes(deleteModal.messageId)) {
+                const ok = await deleteMessageFromServer(chatId, deleteModal.messageId);
+                if (ok && (pinnedMessageIds[chatId] ?? []).includes(deleteModal.messageId)) {
                   setPinnedMessageIds((prev) => ({
                     ...prev,
                     [chatId]: (prev[chatId] ?? []).filter((id) => id !== deleteModal.messageId),
@@ -1486,10 +1474,10 @@ const ChatPage = () => {
             </AlertDialogAction>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
+              onClick={async () => {
                 if (!deleteModal || !chatId) return;
-                setMessages((prev) => prev.filter((m) => m.id !== deleteModal.messageId));
-                if ((pinnedMessageIds[chatId] ?? []).includes(deleteModal.messageId)) {
+                const ok = await deleteForEveryone(chatId, deleteModal.messageId);
+                if (ok && (pinnedMessageIds[chatId] ?? []).includes(deleteModal.messageId)) {
                   setPinnedMessageIds((prev) => ({
                     ...prev,
                     [chatId]: (prev[chatId] ?? []).filter((id) => id !== deleteModal.messageId),

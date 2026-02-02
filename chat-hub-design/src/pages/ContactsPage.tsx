@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils';
 
 const ContactsPage = () => {
   const navigate = useNavigate();
-  const { chats } = useChats();
+  const { chats, createDirectChat } = useChats();
   const {
     contacts,
     pinContact,
@@ -75,10 +75,14 @@ const ContactsPage = () => {
     };
   }, [contacts, searchQuery]);
 
-  const handleContactClick = (contact: Contact) => {
-    const chat = chats.find((c) => !c.isGroup && c.name === contact.name);
-    if (chat) navigate(`/chat/${chat.id}`);
-    else navigate('/');
+  const handleContactClick = async (contact: Contact) => {
+    const existing = chats.find((c) => !c.isGroup && c.members?.includes(contact.id));
+    if (existing) {
+      navigate(`/chat/${existing.id}`);
+      return;
+    }
+    const newChat = await createDirectChat(contact.id);
+    if (newChat) navigate(`/chat/${newChat.id}`);
   };
 
   const handleClearHistoryConfirm = () => {
@@ -261,7 +265,14 @@ const ContactsPage = () => {
       </motion.div>
 
       <SideMenu open={menuOpen} onOpenChange={setMenuOpen} />
-      <AddContactSheet open={addContactOpen} onOpenChange={setAddContactOpen} />
+      <AddContactSheet
+        open={addContactOpen}
+        onOpenChange={setAddContactOpen}
+        onSelect={async (contact) => {
+          const newChat = await createDirectChat(contact.id);
+          if (newChat) navigate(`/chat/${newChat.id}`);
+        }}
+      />
 
       {/* Clear History — spec 11.10: Clear for me / Clear for everyone */}
       <AlertDialog open={!!clearHistoryContact} onOpenChange={(open) => !open && setClearHistoryContact(null)}>

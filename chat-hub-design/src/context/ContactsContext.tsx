@@ -1,34 +1,82 @@
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { Contact } from '@/types/messenger';
-import { contacts as initialContacts } from '@/data/mockData';
+import { useAuth } from '@/context/AuthContext';
+import { api } from '@/services/api';
+
+interface ApiUser {
+  id: string;
+  username: string;
+  email?: string | null;
+  avatarUrl?: string | null;
+  isOnline?: boolean;
+  lastSeenAt?: string | null;
+}
 
 interface ContactsContextValue {
   contacts: Contact[];
+  contactsLoading: boolean;
+  searchContacts: (query: string) => Promise<Contact[]>;
+  refreshContacts: () => Promise<void>;
   pinContact: (id: string, pinned: boolean) => void;
   archiveContact: (id: string, archived: boolean) => void;
   muteContact: (id: string, muted: boolean) => void;
   blockContact: (id: string, blocked: boolean) => void;
   deleteContact: (id: string) => void;
-  addContact: (contact: Omit<Contact, 'id'> & { id?: string }) => Contact;
   getContactById: (id: string) => Contact | undefined;
 }
 
 const ContactsContext = createContext<ContactsContextValue | null>(null);
 
-function withDefaults(c: Contact): Contact {
+function mapApiUserToContact(u: ApiUser): Contact {
   return {
-    ...c,
-    isPinned: c.isPinned ?? false,
-    isArchived: c.isArchived ?? false,
-    isMuted: c.isMuted ?? false,
-    isBlocked: c.isBlocked ?? false,
+    id: u.id,
+    name: u.username || u.email || 'Пользователь',
+    username: u.username,
+    avatar: u.avatarUrl ?? undefined,
+    isOnline: u.isOnline ?? false,
+    lastSeen: u.lastSeenAt ? new Date(u.lastSeenAt) : undefined,
+    isPinned: false,
+    isArchived: false,
+    isMuted: false,
+    isBlocked: false,
   };
 }
 
 export function ContactsProvider({ children }: { children: React.ReactNode }) {
-  const [contacts, setContacts] = useState<Contact[]>(() =>
-    initialContacts.map(withDefaults)
-  );
+  const { user } = useAuth();
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+
+  const loadContacts = useCallback(async () => {
+    if (!user?.id) return;
+    setContactsLoading(true);
+    try {
+      const data = await api.get<ApiUser[]>('/users');
+      const list = Array.isArray(data) ? data : [];
+      setContacts(list.map(mapApiUserToContact));
+    } catch {
+      setContacts([]);
+    } finally {
+      setContactsLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (user?.id) loadContacts();
+    else setContacts([]);
+  }, [user?.id, loadContacts]);
+
+  const searchContacts = useCallback(async (query: string): Promise<Contact[]> => {
+    if (!query.trim()) return [];
+    try {
+      const data = await api.get<ApiUser[]>(`/users/search?q=${encodeURIComponent(query.trim())}`);
+      return (Array.isArray(data) ? data : []).map(mapApiUserToContact);
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const refreshContacts = useCallback(() => loadContacts(), [loadContacts]);
 
   const pinContact = useCallback((id: string, pinned: boolean) => {
     setContacts((prev) =>
@@ -58,23 +106,6 @@ export function ContactsProvider({ children }: { children: React.ReactNode }) {
     setContacts((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
-  const addContact = useCallback(
-    (contact: Omit<Contact, 'id'> & { id?: string }): Contact => {
-      const id = contact.id ?? `contact-${Date.now()}`;
-      const newContact: Contact = withDefaults({
-        ...contact,
-        id,
-        isPinned: false,
-        isArchived: false,
-        isMuted: false,
-        isBlocked: false,
-      });
-      setContacts((prev) => [...prev, newContact]);
-      return newContact;
-    },
-    []
-  );
-
   const getContactById = useCallback(
     (id: string) => contacts.find((c) => c.id === id),
     [contacts]
@@ -83,22 +114,26 @@ export function ContactsProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<ContactsContextValue>(
     () => ({
       contacts,
+      contactsLoading,
+      searchContacts,
+      refreshContacts,
       pinContact,
       archiveContact,
       muteContact,
       blockContact,
       deleteContact,
-      addContact,
       getContactById,
     }),
     [
       contacts,
+      contactsLoading,
+      searchContacts,
+      refreshContacts,
       pinContact,
       archiveContact,
       muteContact,
       blockContact,
       deleteContact,
-      addContact,
       getContactById,
     ]
   );

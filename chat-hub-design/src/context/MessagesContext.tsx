@@ -10,6 +10,14 @@ interface MessagesContextValue {
   getAllMessages: (chatId: string) => Message[];
   setMessagesForChat: (chatId: string, updater: (prev: Message[]) => Message[]) => void;
   addMessageToChat: (chatId: string, message: Message) => void;
+  /** Отправка текста через API */
+  sendTextMessage: (chatId: string, content: string, replyToId?: string) => Promise<Message | null>;
+  /** Редактирование сообщения через API */
+  editMessageContent: (chatId: string, messageId: string, content: string) => Promise<boolean>;
+  /** Удаление на сервере и локально (у себя) */
+  deleteMessageFromServer: (chatId: string, messageId: string) => Promise<boolean>;
+  /** Удаление у всех участников */
+  deleteForEveryone: (chatId: string, messageId: string) => Promise<boolean>;
   deleteMessage: (chatId: string, messageId: string) => void;
   updateMessageReaction: (chatId: string, messageId: string, emoji: string, add: boolean) => void;
   incrementViews: (chatId: string, messageId: string) => void;
@@ -103,6 +111,68 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
     setMessagesForChat(chatId, (prev) => [...prev, { ...message, chatId }]);
   }, [setMessagesForChat]);
 
+  const sendTextMessage = useCallback(
+    async (chatId: string, content: string, replyToId?: string): Promise<Message | null> => {
+      if (!currentUserId || !content.trim()) return null;
+      try {
+        const body: { chatId: string; content: string; replyToId?: string } = { chatId, content: content.trim() };
+        if (replyToId) body.replyToId = replyToId;
+        const res = await api.post<ApiMessage>('/messages', body);
+        const msg = mapApiMessageToMessage(res, currentUserId);
+        addMessageToChat(chatId, msg);
+        return msg;
+      } catch {
+        return null;
+      }
+    },
+    [currentUserId, addMessageToChat]
+  );
+
+  const editMessageContent = useCallback(
+    async (chatId: string, messageId: string, content: string): Promise<boolean> => {
+      try {
+        const res = await api.patch<ApiMessage>(`/messages/${messageId}`, { content: content.trim() });
+        setMessagesForChat(chatId, (prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? { ...m, content: res.content ?? content, editedAt: new Date(res.createdAt ?? Date.now()) }
+              : m
+          )
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [setMessagesForChat]
+  );
+
+  const deleteMessageFromServer = useCallback(
+    async (chatId: string, messageId: string): Promise<boolean> => {
+      try {
+        await api.delete(`/messages/${messageId}`);
+        setMessagesForChat(chatId, (prev) => prev.filter((m) => m.id !== messageId));
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [setMessagesForChat]
+  );
+
+  const deleteForEveryone = useCallback(
+    async (chatId: string, messageId: string): Promise<boolean> => {
+      try {
+        await api.post('/messages/delete-for-everyone', { messageId });
+        setMessagesForChat(chatId, (prev) => prev.filter((m) => m.id !== messageId));
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [setMessagesForChat]
+  );
+
   const deleteMessage = useCallback(
     (chatId: string, messageId: string) => {
       setMessagesForChat(chatId, (prev) => prev.filter((m) => m.id !== messageId));
@@ -171,6 +241,10 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
     getAllMessages: getFullMessages,
     setMessagesForChat,
     addMessageToChat,
+    sendTextMessage,
+    editMessageContent,
+    deleteMessageFromServer,
+    deleteForEveryone,
     deleteMessage,
     updateMessageReaction,
     incrementViews,

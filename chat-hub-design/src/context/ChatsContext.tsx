@@ -11,6 +11,9 @@ interface ChatsContextValue {
   chatsLoading: boolean;
   chatsError: string | null;
   refreshChats: () => Promise<void>;
+  createDirectChat: (otherUserId: string) => Promise<Chat | null>;
+  /** Создать групповой чат */
+  createGroupChat: (name: string, memberIds: string[], description?: string) => Promise<Chat | null>;
   updateChat: (chatId: string, update: ChatUpdate) => void;
   deleteChat: (chatId: string) => void;
   addChat: (chat: Chat) => void;
@@ -65,6 +68,36 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
       setChatsError(null);
     }
   }, [isAuthenticated, user?.id, loadChats]);
+
+  const createDirectChat = useCallback(
+    async (otherUserId: string): Promise<Chat | null> => {
+      if (!user?.id) return null;
+      try {
+        const res = await api.post<ApiChat>('/chats/direct', { userId: otherUserId });
+        const chat = mapApiChatToChat({ ...res, unreadCount: res.unreadCount ?? 0 }, user.id);
+        addChat(chat);
+        return chat;
+      } catch {
+        return null;
+      }
+    },
+    [user?.id, addChat]
+  );
+
+  const createGroupChat = useCallback(
+    async (name: string, memberIds: string[], description?: string): Promise<Chat | null> => {
+      if (!user?.id) return null;
+      try {
+        const res = await api.post<ApiChat>('/chats/group', { name, memberIds, description });
+        const chat = mapApiChatToChat({ ...res, unreadCount: res.unreadCount ?? 0 }, user.id);
+        addChat(chat);
+        return chat;
+      } catch {
+        return null;
+      }
+    },
+    [user?.id, addChat]
+  );
 
   const updateChat = useCallback((chatId: string, update: ChatUpdate) => {
     setChats((prev) =>
@@ -123,6 +156,8 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
       chatsLoading,
       chatsError,
       refreshChats: loadChats,
+      createDirectChat,
+      createGroupChat,
       addChat,
       updateChat,
       deleteChat,
@@ -140,6 +175,8 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
       chatsLoading,
       chatsError,
       loadChats,
+      createDirectChat,
+      createGroupChat,
       addChat,
       updateChat,
       deleteChat,

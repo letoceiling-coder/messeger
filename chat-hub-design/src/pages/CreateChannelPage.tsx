@@ -6,13 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useChats } from '@/context/ChatsContext';
-import type { Chat } from '@/types/messenger';
 import { motion } from 'framer-motion';
 
 /** Создание канала: название, описание, аватар, тип (публичный/приватный). См. FEED_IMPLEMENTATION_PLAN.md блок C */
 const CreateChannelPage = () => {
   const navigate = useNavigate();
-  const { addChat } = useChats();
+  const { createGroupChat } = useChats();
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -28,27 +27,16 @@ const CreateChannelPage = () => {
     e.target.value = '';
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const trimmedName = name.trim();
     if (!trimmedName) {
       setError('Введите название канала');
       return;
     }
-    const channelId = `channel-${Date.now()}`;
-    const chat: Chat = {
-      id: channelId,
-      name: trimmedName,
-      avatar: avatarUrl,
-      username: username.trim() || undefined,
-      isGroup: false,
-      isChannel: true,
-      unreadCount: 0,
-      isPinned: false,
-      isMuted: false,
-      isArchived: false,
-    };
-    addChat(chat);
-    navigate(`/chat/${channelId}`, { replace: true });
+    setError(null);
+    const chat = await createGroupChat(trimmedName, [], description.trim() || undefined);
+    if (chat) navigate(`/chat/${chat.id}`, { replace: true });
+    else setError('Не удалось создать канал');
   };
 
   return (

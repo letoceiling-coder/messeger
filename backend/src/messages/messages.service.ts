@@ -54,6 +54,7 @@ export class MessagesService {
           encryptedContent: dto.encryptedContent || null,
           encryptedKey: dto.encryptedKey || null,
           iv: dto.iv || null,
+          replyToId: dto.replyToId || null,
         },
         include: {
           user: {

@@ -1,94 +1,83 @@
 import { useState } from 'react';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Contact } from '@/types/messenger';
 import { useContacts } from '@/context/ContactsContext';
+import UserAvatar from '@/components/common/Avatar';
+
 interface AddContactSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdded?: (contact: Contact) => void;
+  onSelect?: (contact: Contact) => void;
 }
 
 export default function AddContactSheet({
   open,
   onOpenChange,
-  onAdded,
+  onSelect,
 }: AddContactSheetProps) {
-  const { addContact } = useContacts();
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [phone, setPhone] = useState('');
+  const { searchContacts } = useContacts();
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Contact[]>([]);
+  const [searching, setSearching] = useState(false);
 
-  const reset = () => {
-    setFirstName('');
-    setLastName('');
-    setPhone('');
+  const handleSearch = async () => {
+    if (!query.trim()) return;
+    setSearching(true);
+    try {
+      const list = await searchContacts(query.trim());
+      setResults(list);
+    } finally {
+      setSearching(false);
+    }
   };
 
-  const handleSave = () => {
-    const name = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ') || firstName.trim() || lastName.trim();
-    if (!name.trim()) return;
-    if (!phone.trim()) return;
-    const contact = addContact({
-      name,
-      username: undefined,
-      phone: phone.trim(),
-      isOnline: false,
-    });
-    reset();
+  const handleSelect = (contact: Contact) => {
+    onSelect?.(contact);
     onOpenChange(false);
-    onAdded?.(contact);
-  };
-
-  const handleCancel = () => {
-    reset();
-    onOpenChange(false);
+    setQuery('');
+    setResults([]);
   };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="rounded-t-2xl max-h-[90vh]">
         <SheetHeader>
-          <SheetTitle>Новый контакт</SheetTitle>
+          <SheetTitle>Найти пользователя</SheetTitle>
         </SheetHeader>
         <div className="grid gap-4 py-4">
-          <div className="grid gap-2">
-            <Label htmlFor="firstName">Имя *</Label>
+          <div className="flex gap-2">
             <Input
-              id="firstName"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              placeholder="Имя"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              placeholder="Username или email"
             />
+            <Button onClick={handleSearch} disabled={searching || !query.trim()}>
+              {searching ? '...' : 'Найти'}
+            </Button>
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="lastName">Фамилия</Label>
-            <Input
-              id="lastName"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              placeholder="Фамилия"
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="phone">Номер телефона *</Label>
-            <Input
-              id="phone"
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+7 999 123-45-67"
-            />
+          <div className="max-h-64 overflow-y-auto space-y-2">
+            {results.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => handleSelect(c)}
+                className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-secondary transition-colors text-left"
+              >
+                <UserAvatar src={c.avatar} name={c.name} size="md" isOnline={c.isOnline} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">{c.name}</p>
+                  {c.username && <p className="text-sm text-muted-foreground truncate">@{c.username}</p>}
+                </div>
+              </button>
+            ))}
+            {results.length === 0 && query && !searching && (
+              <p className="text-sm text-muted-foreground py-4">Пользователи не найдены</p>
+            )}
           </div>
         </div>
-        <SheetFooter className="gap-2">
-          <Button variant="outline" onClick={handleCancel}>
-            Отмена
-          </Button>
-          <Button onClick={handleSave}>Сохранить</Button>
-        </SheetFooter>
       </SheetContent>
     </Sheet>
   );

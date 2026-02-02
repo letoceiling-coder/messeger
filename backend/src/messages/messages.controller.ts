@@ -21,6 +21,7 @@ import { MessagesService } from './messages.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CreateVoiceMessageDto } from './dto/create-voice-message.dto';
+import { CreateTextMessageDto } from './dto/create-text-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { AddReactionDto } from './dto/add-reaction.dto';
 import { MessagerWebSocketGateway } from '../websocket/websocket.gateway';
@@ -72,6 +73,30 @@ export class MessagesController {
       return [];
     }
     return this.messagesService.searchGlobal(user.id, query);
+  }
+
+  /** Отправка текстового сообщения (REST, дублирует WebSocket message:send) */
+  @Post()
+  async createTextMessage(
+    @Body() dto: CreateTextMessageDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    const message = await this.messagesService.createMessage({
+      chatId: dto.chatId,
+      userId: user.id,
+      content: dto.content || '',
+      replyToId: dto.replyToId,
+    });
+    const msg = message as any;
+    this.wsGateway.broadcastMessageToChat({
+      id: msg.id,
+      chatId: msg.chatId,
+      userId: msg.userId,
+      content: msg.content,
+      messageType: msg.messageType,
+      createdAt: msg.createdAt,
+    });
+    return message;
   }
 
   @Post('upload-audio')

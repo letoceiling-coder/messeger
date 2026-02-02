@@ -94,7 +94,7 @@ export class MessagerWebSocketGateway
   }
 
   emitMessageEdited(chatId: string, payload: { id: string; content: string; isEdited: boolean; updatedAt: Date }) {
-    this.server.to(`chat:${chatId}`).emit('message:edited', payload);
+    this.server.to(`chat:${chatId}`).emit('message:edited', { ...payload, chatId });
   }
 
   async handleConnection(client: AuthenticatedSocket) {
