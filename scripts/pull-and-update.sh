@@ -82,6 +82,11 @@ echo -e "${YELLOW}[7/7] Nginx config + reload...${NC}"
 if [ -f "$ROOT/nginx/messager-vps.conf" ] && [ -d /etc/nginx/sites-available ]; then
   cp "$ROOT/nginx/messager-vps.conf" /etc/nginx/sites-available/messager 2>/dev/null || true
 fi
+# Обновить messenger (default_server для 89.169.39.244) — переключить на chat-hub-design
+if [ -f /etc/nginx/sites-enabled/messenger ]; then
+  sed -i 's|/var/www/messenger/frontend-web/dist|/var/www/messager/chat-hub-design/dist|g' /etc/nginx/sites-enabled/messenger
+  sed -i 's|/var/www/messager/frontend-web/dist|/var/www/messager/chat-hub-design/dist|g' /etc/nginx/sites-enabled/messenger
+fi
 if command -v nginx >/dev/null 2>&1; then
   (nginx -t 2>/dev/null && (systemctl reload nginx 2>/dev/null || service nginx reload 2>/dev/null)) || true
 fi
