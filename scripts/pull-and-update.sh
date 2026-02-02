@@ -74,6 +74,9 @@ echo -e "${YELLOW}[4/7] Prisma migrate (backend)...${NC}"
 echo -e "${YELLOW}[5/7] Backend build...${NC}"
 cd "$ROOT/backend" && npm run build && cd "$ROOT" || { echo -e "${RED}Backend build failed${NC}"; exit 1; }
 
+echo -e "${YELLOW}[5.5/7] Ensure uploads dirs exist...${NC}"
+mkdir -p "$ROOT/backend/uploads/audio" "$ROOT/backend/uploads/images" "$ROOT/backend/uploads/videos" "$ROOT/backend/uploads/documents" "$ROOT/backend/uploads/avatars" 2>/dev/null || true
+
 echo -e "${YELLOW}[6/6] PM2 restart...${NC}"
 cd "$ROOT/backend"
 # messenger-api — рабочий процесс на порту 30000; messager-backend часто errored

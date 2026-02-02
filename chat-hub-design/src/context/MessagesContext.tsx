@@ -117,7 +117,10 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addMessageToChat = useCallback((chatId: string, message: Message) => {
-    setMessagesForChat(chatId, (prev) => [...prev, { ...message, chatId }]);
+    setMessagesForChat(chatId, (prev) => {
+      if (prev.some((m) => m.id === message.id)) return prev;
+      return [...prev, { ...message, chatId }];
+    });
   }, [setMessagesForChat]);
 
   const sendTextMessage = useCallback(

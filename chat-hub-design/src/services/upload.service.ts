@@ -71,7 +71,8 @@ export const uploadService = {
 
   async uploadVideo(file: Blob | File, chatId: string, caption?: string, asVideoNote = false): Promise<UploadMediaResponse> {
     const fd = new FormData();
-    const f = file instanceof File ? file : new File([file], 'video.webm', { type: file.type || 'video/webm' });
+    const mime = (file instanceof File ? file.type : file.type) || 'video/webm';
+    const f = file instanceof File ? file : new File([file], 'video.webm', { type: mime.split(';')[0] || 'video/webm' });
     fd.append('file', f);
     fd.append('chatId', chatId);
     if (caption?.trim()) fd.append('caption', caption.trim());

@@ -7,17 +7,19 @@ import type { Message } from '@/types/messenger';
 
 function payloadToMessage(p: MessageReceivedPayload, currentUserId: string): Message {
   const ts = typeof p.createdAt === 'string' ? new Date(p.createdAt) : new Date();
+  const type = (p.messageType as Message['type']) || 'text';
+  const mediaUrl = p.mediaUrl ?? (type === 'voice' ? p.audioUrl : null) ?? undefined;
   return {
     id: p.id,
     chatId: p.chatId,
     senderId: p.userId,
-    type: (p.messageType as Message['type']) || 'text',
+    type,
     content: p.content ?? '',
     timestamp: ts,
     status: 'sent',
     isOutgoing: p.userId === currentUserId,
     replyTo: p.replyToId ?? undefined,
-    mediaUrl: p.mediaUrl ?? undefined,
+    mediaUrl: mediaUrl ?? undefined,
   };
 }
 
@@ -52,21 +54,22 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     };
 
     const onDeleted = (data: { messageId: string; chatId: string }) => {
-      setMessagesForChat(data.chatId, (prev) =>
-        prev.filter((m) => m.id !== data.messageId)
-      );
+      setMessagesForChat(data.chatId, (prev) => {
+        if (!prev.some((m) => m.id === data.messageId)) return prev;
+        return prev.filter((m) => m.id !== data.messageId);
+      });
     };
 
     const onEdited = (data: { id: string; chatId?: string; content: string; isEdited: boolean; updatedAt: string }) => {
       const chatId = data.chatId;
       if (!chatId) return;
-      setMessagesForChat(chatId, (prev) =>
-        prev.map((m) =>
-          m.id === data.id
-            ? { ...m, content: data.content, editedAt: new Date(data.updatedAt) }
-            : m
-        )
-      );
+      setMessagesForChat(chatId, (prev) => {
+        const idx = prev.findIndex((m) => m.id === data.id);
+        if (idx < 0) return prev;
+        const next = [...prev];
+        next[idx] = { ...next[idx], content: data.content, editedAt: new Date(data.updatedAt) };
+        return next;
+      });
     };
 
     s.on('message:received', onMessage);

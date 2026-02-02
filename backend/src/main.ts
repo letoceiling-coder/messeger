@@ -34,7 +34,7 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   const uploadsDir = join(__dirname, '..', 'uploads');
-  for (const sub of ['audio', 'images', 'videos', 'avatars']) {
+  for (const sub of ['audio', 'images', 'videos', 'avatars', 'documents']) {
     const dir = join(uploadsDir, sub);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   }

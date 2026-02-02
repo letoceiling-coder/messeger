@@ -228,11 +228,8 @@ export class MessagesController {
         },
       }),
       fileFilter: (req, file, cb) => {
-        if (file.mimetype.startsWith('video/')) {
-          cb(null, true);
-        } else {
-          cb(new Error('Только видео разрешены'), false);
-        }
+        const ok = file.mimetype?.startsWith('video/') || /\.(webm|mp4|mov|avi|mkv)$/i.test(file.originalname || '');
+        cb(null, ok);
       },
       limits: {
         fileSize: 100 * 1024 * 1024, // 100MB
@@ -241,19 +238,23 @@ export class MessagesController {
   )
   async uploadVideo(
     @UploadedFile() file: Express.Multer.File,
-    @Body() body: { chatId: string; caption?: string; messageType?: 'video' | 'video_note' },
+    @Body() body: { chatId?: string; caption?: string; messageType?: string },
     @CurrentUser() user: any,
   ) {
     if (!file) {
       throw new Error('Файл не загружен');
     }
+    const chatId = body?.chatId;
+    if (!chatId) {
+      throw new Error('chatId обязателен');
+    }
     const mediaUrl = `/uploads/videos/${file.filename}`;
     const message = await this.messagesService.createMediaMessage({
-      chatId: body.chatId,
+      chatId,
       userId: user.id,
       mediaUrl,
-      messageType: body.messageType === 'video_note' ? 'video_note' : 'video',
-      caption: body.caption,
+      messageType: body?.messageType === 'video_note' ? 'video_note' : 'video',
+      caption: body?.caption,
     });
     this.wsGateway.broadcastMessageToChat({
       id: message.id,

@@ -170,9 +170,28 @@ const ChatPage = () => {
     };
   }, [recordingVoice, recordingVideoNote]);
 
-  // Scroll to bottom on new messages
+  const prevMessagesLenRef = useRef(0);
+  const userScrolledUpRef = useRef(false);
+
+  // Scroll to bottom only when: we sent a message, or we're already near bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = messagesContainerRef.current;
+    const len = messages.length;
+    const prevLen = prevMessagesLenRef.current;
+    prevMessagesLenRef.current = len;
+
+    if (len === 0) return;
+
+    const lastMsg = messages[len - 1];
+    const weJustSent = len > prevLen && lastMsg?.isOutgoing;
+    const nearBottom = el ? el.scrollHeight - el.scrollTop - el.clientHeight < 150 : true;
+
+    if (weJustSent || nearBottom) {
+      userScrolledUpRef.current = false;
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    } else if (len > prevLen) {
+      userScrolledUpRef.current = true;
+    }
   }, [messages]);
 
   // Восстановить позицию скролла после подгрузки более ранних сообщений
