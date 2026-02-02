@@ -238,7 +238,7 @@ const ChatPage = () => {
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInputValue(e.target.value);
 
-    if (chatId && ws) {
+    if (chatId) {
       ws.emitTypingStart(chatId);
       if (typingStopRef.current) clearTimeout(typingStopRef.current);
       typingStopRef.current = setTimeout(() => {

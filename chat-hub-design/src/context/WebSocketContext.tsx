@@ -9,7 +9,8 @@ interface WebSocketContextValue {
   emitTypingStop: (chatId: string) => void;
 }
 
-const WebSocketContext = createContext<WebSocketContextValue | null>(null);
+const NOOP_WS: WebSocketContextValue = { emitTypingStart: () => {}, emitTypingStop: () => {} };
+const WebSocketContext = createContext<WebSocketContextValue>(NOOP_WS);
 
 function payloadToMessage(p: MessageReceivedPayload, currentUserId: string): Message {
   const ts = typeof p.createdAt === 'string' ? new Date(p.createdAt) : new Date();
@@ -101,7 +102,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function useWebSocket() {
-  const ctx = useContext(WebSocketContext);
-  return ctx;
+export function useWebSocket(): WebSocketContextValue {
+  return useContext(WebSocketContext) ?? NOOP_WS;
 }

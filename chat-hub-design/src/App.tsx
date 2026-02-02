@@ -7,9 +7,13 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ChatsProvider } from "./context/ChatsContext";
 import { ContactsProvider } from "./context/ContactsContext";
 import { CallProvider } from "./context/CallContext";
+import { Suspense, lazy } from "react";
 import { MessagesProvider } from "./context/MessagesContext";
-import { WebSocketProvider } from "./context/WebSocketContext";
 import { FeedProvider } from "./context/FeedContext";
+
+const WebSocketProvider = lazy(() =>
+  import("./context/WebSocketContext").then((m) => ({ default: m.WebSocketProvider }))
+);
 import MainLayout from "./components/layout/MainLayout";
 import FeedLayout from "./components/layout/FeedLayout";
 import CallOverlay from "./components/call/CallOverlay";
@@ -67,7 +71,8 @@ const App = () => (
           <ContactsProvider>
             <CallProvider>
               <MessagesProvider>
-                <WebSocketProvider>
+                <Suspense fallback={null}>
+                  <WebSocketProvider>
                 <FeedProvider>
                 <ThemeProvider attribute="class" defaultTheme="system" storageKey="messenger-theme" enableSystem>
                 <TooltipProvider>
@@ -103,7 +108,8 @@ const App = () => (
                 </TooltipProvider>
                 </ThemeProvider>
                 </FeedProvider>
-                </WebSocketProvider>
+                  </WebSocketProvider>
+                </Suspense>
               </MessagesProvider>
             </CallProvider>
           </ContactsProvider>
