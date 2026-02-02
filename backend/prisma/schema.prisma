@@ -12,9 +12,10 @@ datasource db {
 
 model User {
   id           String   @id @default(uuid())
-  email        String   @unique
-  username     String   @unique
-  passwordHash String   @map("password_hash")
+  phone        String?  @unique @map("phone")
+  email        String?  @unique @map("email")
+  username     String   @unique @map("username")
+  passwordHash String?  @map("password_hash")
   avatarUrl    String?  @map("avatar_url")
   isOnline     Boolean  @default(false) @map("is_online")
   lastSeenAt   DateTime? @map("last_seen_at")
@@ -29,6 +30,18 @@ model User {
   userKey        UserKey?
 
   @@map("users")
+}
+
+model SmsCode {
+  id        String   @id @default(uuid())
+  phone     String
+  code      String
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([phone])
+  @@index([expiresAt])
+  @@map("sms_codes")
 }
 
 model Chat {
