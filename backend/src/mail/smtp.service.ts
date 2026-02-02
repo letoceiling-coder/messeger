@@ -22,14 +22,15 @@ export class SmtpService {
     }
 
     const portNum = Number(port);
+    const useTls = portNum === 465;
     this.transporter = nodemailer.createTransport({
       host,
       port: portNum,
-      secure: portNum === 465,
+      secure: useTls,
       auth: { user, pass },
       connectionTimeout: 10000,
       greetingTimeout: 10000,
-      ...(portNum === 587 && { requireTLS: true }),
+      ...((portNum === 587 || portNum === 2525) && { requireTLS: true }),
     });
 
     return this.transporter;
