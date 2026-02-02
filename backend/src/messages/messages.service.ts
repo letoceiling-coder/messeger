@@ -23,7 +23,7 @@ export interface CreateMediaMessageDto {
   chatId: string;
   userId: string;
   mediaUrl: string;
-  messageType: 'image' | 'video';
+  messageType: 'image' | 'video' | 'video_note';
   caption?: string;
 }
 
