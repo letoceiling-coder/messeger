@@ -1,0 +1,304 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Скрытие скроллбара */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Telegram-style Design System */
+
+@layer base {
+  :root {
+    /* Telegram Classic Colors */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 13%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 13%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 13%;
+
+    /* Telegram Blue */
+    --primary: 199 100% 40%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 200 20% 96%;
+    --secondary-foreground: 0 0% 13%;
+
+    --muted: 200 20% 96%;
+    --muted-foreground: 0 0% 45%;
+
+    --accent: 200 20% 96%;
+    --accent-foreground: 0 0% 13%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 199 100% 40%;
+
+    /* Spec: radius 12–18px, bubble 16px */
+    --radius: 0.75rem;
+    --radius-sm: 12px;
+    --radius-md: 14px;
+    --radius-lg: 18px;
+    --radius-bubble: 16px;
+    /* Spacing: 4 / 8 / 12 / 16 / 24 */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-6: 24px;
+    /* Shadows: soft elevation */
+    --shadow-soft: 0 2px 8px hsl(0 0% 0% / 0.06);
+    --shadow-modal: 0 8px 32px hsl(0 0% 0% / 0.12);
+    --shadow-chat-item: 0 1px 3px hsl(0 0% 0% / 0.05);
+    --shadow-bubble: 0 1px 2px hsl(0 0% 0% / 0.08);
+
+    /* Telegram Message Bubbles */
+    --message-outgoing: 120 40% 94%;
+    --message-outgoing-foreground: 0 0% 13%;
+    --message-incoming: 0 0% 100%;
+    --message-incoming-foreground: 0 0% 13%;
+    /* Единая ширина пузырей в чате: макс 85%, мин для коротких сообщений */
+    --message-bubble-max-w: 85%;
+    --message-bubble-min-w: 12rem;
+
+    /* Telegram Specific */
+    --telegram-blue: 199 100% 40%;
+    --telegram-light-blue: 199 100% 95%;
+    --telegram-green: 120 40% 94%;
+    --online-green: 142 70% 45%;
+    --unread-badge: 199 100% 40%;
+
+    /* Gradients (plan) */
+    --gradient-telegram: linear-gradient(135deg, #0088cc 0%, #00a8e8 100%);
+    --gradient-channel: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --gradient-story: linear-gradient(135deg, #f093fb 0%, #f5576c 50%, #fda085 100%);
+    /* Transitions */
+    --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-spring: 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    /* Safe areas for mobile */
+    --safe-area-top: env(safe-area-inset-top, 0px);
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .dark {
+    --background: 0 0% 10%;
+    --foreground: 0 0% 95%;
+
+    --card: 0 0% 13%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 0 0% 13%;
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 199 100% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 0 0% 17%;
+    --secondary-foreground: 0 0% 95%;
+
+    --muted: 0 0% 17%;
+    --muted-foreground: 0 0% 60%;
+
+    --accent: 0 0% 17%;
+    --accent-foreground: 0 0% 95%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 95%;
+
+    --border: 0 0% 20%;
+    --input: 0 0% 20%;
+    --ring: 199 100% 50%;
+
+    --shadow-soft: 0 2px 8px hsl(0 0% 0% / 0.2);
+    --shadow-modal: 0 8px 32px hsl(0 0% 0% / 0.4);
+    --shadow-chat-item: 0 1px 3px hsl(0 0% 0% / 0.15);
+    --shadow-bubble: 0 1px 2px hsl(0 0% 0% / 0.2);
+
+    /* Dark mode message bubbles */
+    --message-outgoing: 199 70% 25%;
+    --message-outgoing-foreground: 0 0% 95%;
+    --message-incoming: 0 0% 17%;
+    --message-incoming-foreground: 0 0% 95%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+
+  /* Mobile optimizations */
+  html {
+    touch-action: manipulation;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+}
+
+@layer utilities {
+  /* Shadow utilities */
+  .shadow-soft {
+    box-shadow: var(--shadow-soft);
+  }
+  .shadow-chat-item {
+    box-shadow: var(--shadow-chat-item);
+  }
+  .shadow-bubble {
+    box-shadow: var(--shadow-bubble);
+  }
+
+  /* Transition utilities (plan) */
+  .transition-fast {
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .transition-spring {
+    transition-duration: 300ms;
+    transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* Telegram-style animations */
+  .animate-slide-up {
+    animation: slide-up 0.3s ease-out;
+  }
+
+  .animate-slide-down {
+    animation: slide-down 0.3s ease-out;
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.2s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scale-in 0.2s ease-out;
+  }
+
+  .animate-message-in {
+    animation: message-in 0.3s ease-out;
+  }
+
+  @keyframes slide-up {
+    from {
+      transform: translateY(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slide-down {
+    from {
+      transform: translateY(-100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes scale-in {
+    from {
+      transform: scale(0.95);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @keyframes message-in {
+    from {
+      transform: translateY(20px) scale(0.95);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0) scale(1);
+      opacity: 1;
+    }
+  }
+
+  /* Spec 12: global animations */
+  .animate-reorder {
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .animate-swipe-elastic {
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .animate-status-crossfade {
+    animation: crossfade 0.2s ease-out;
+  }
+  @keyframes crossfade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Safe area utilities */
+  .pt-safe {
+    padding-top: var(--safe-area-top);
+  }
+
+  .pb-safe {
+    padding-bottom: var(--safe-area-bottom);
+  }
+
+  /* Touch feedback */
+  .touch-feedback {
+    @apply active:bg-black/5 transition-colors duration-100;
+  }
+
+  .touch-feedback-dark {
+    @apply active:bg-white/10 transition-colors duration-100;
+  }
+}

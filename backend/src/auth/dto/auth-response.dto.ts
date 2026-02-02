@@ -2,7 +2,9 @@ export class AuthResponseDto {
   accessToken: string;
   user: {
     id: string;
-    email: string;
+    phone?: string;
+    email?: string;
     username: string;
+    avatarUrl?: string;
   };
 }
