@@ -3,6 +3,7 @@ import { Contact } from '@/types/messenger';
 import type { CallSession, CallType, CallSessionState, CallNetworkState } from '@/types/messenger';
 import { getSocket } from '@/services/websocket';
 import { WebRTCService } from '@/services/webrtc.service';
+import { callStatsService } from '@/services/call-stats.service';
 import { toast } from '@/components/ui/sonner';
 import { useChats } from '@/context/ChatsContext';
 import { useContacts } from '@/context/ContactsContext';
@@ -37,6 +38,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const webrtcRef = useRef<WebRTCService | null>(null);
   const pendingOfferRef = useRef<{ chatId: string; offer: RTCSessionDescriptionInit; videoMode: boolean } | null>(null);
+  const activeChatIdRef = useRef<string | null>(null);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -52,6 +54,17 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     setLocalStream(null);
     setRemoteStream(null);
     pendingOfferRef.current = null;
+    activeChatIdRef.current = null;
+  }, []);
+
+  const saveCallIfConnected = useCallback(() => {
+    const call = activeCallRef.current;
+    const chatId = activeChatIdRef.current;
+    if (!call || call.state !== 'connected' || !chatId) return;
+    const duration = call.startTime ? Math.floor((Date.now() - call.startTime) / 1000) : 0;
+    if (duration < 0) return;
+    callStatsService.saveCall(chatId, duration, call.type === 'video', call.contact.name);
+    window.dispatchEvent(new CustomEvent('messager:call-saved'));
   }, []);
 
   useEffect(() => {
@@ -151,6 +164,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       setActiveCall(null);
       return;
     }
+    activeChatIdRef.current = chatId;
 
     const socket = getSocket(localStorage.getItem('accessToken'));
     if (!socket) {
@@ -171,6 +185,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           : prev);
       });
       webrtc.onCallEnd(() => {
+        saveCallIfConnected();
         cleanupCall();
         setActiveCall(null);
         clearTimer();
@@ -235,7 +250,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       socket.once('connect', onConnect);
       socket.once('connect_error', onErr);
     }
-  }, [cleanupCall, clearTimer]);
+  }, [cleanupCall, clearTimer, saveCallIfConnected]);
 
   const setIncomingCall = useCallback((contact: Contact, type: CallType) => {
     setActiveCall({
@@ -268,6 +283,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       }
 
       const doAccept = async () => {
+        const chatId = pending.chatId;
+        activeChatIdRef.current = chatId;
         const webrtc = new WebRTCService(socket);
         webrtcRef.current = webrtc;
         pendingOfferRef.current = null;
@@ -277,6 +294,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           setActiveCall((prev) => prev ? { ...prev, state: 'connected', startTime: Date.now() } : null);
         });
         webrtc.onCallEnd(() => {
+          saveCallIfConnected();
           cleanupCall();
           setActiveCall(null);
           clearTimer();
@@ -292,7 +310,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       });
 
       try {
-        const stream = await webrtc.handleOffer(pending.chatId, pending.offer, { video: pending.videoMode });
+        const stream = await webrtc.handleOffer(chatId, pending.offer, { video: pending.videoMode });
           setLocalStream(stream);
           setActiveCall((prev) => prev ? { ...prev, state: 'connected', startTime: Date.now() } : null);
         } catch (err) {
@@ -345,10 +363,11 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   }, [cleanupCall, clearTimer]);
 
   const endCall = useCallback(() => {
+    saveCallIfConnected();
     cleanupCall();
     setActiveCall(null);
     clearTimer();
-  }, [cleanupCall, clearTimer]);
+  }, [cleanupCall, clearTimer, saveCallIfConnected]);
 
   const setCallState = useCallback((state: CallSessionState) => {
     setActiveCall((prev) => (prev ? { ...prev, state } : null));

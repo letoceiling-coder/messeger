@@ -1,22 +1,61 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import UserAvatar from '@/components/common/Avatar';
 import EmptyState from '@/components/common/EmptyState';
-import { calls, formatCallDuration } from '@/data/mockData';
+import { callStatsService } from '@/services/call-stats.service';
 import { useCall } from '@/context/CallContext';
 import { useChats } from '@/context/ChatsContext';
+import { useAuth } from '@/context/AuthContext';
 import { Call } from '@/types/messenger';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
+function formatCallDuration(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (mins >= 60) {
+    const hours = Math.floor(mins / 60);
+    const remainingMins = mins % 60;
+    return `${hours}:${remainingMins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
 const CallsPage = () => {
   const { startOutgoingCall } = useCall();
-  const { chats } = useChats();
+  const { chats, getChatById } = useChats();
+  const { user } = useAuth();
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  useEffect(() => {
+    const onSaved = () => setRefreshTrigger((t) => t + 1);
+    window.addEventListener('messager:call-saved', onSaved);
+    return () => window.removeEventListener('messager:call-saved', onSaved);
+  }, []);
 
   const getChatIdByContactId = (contactId: string): string | undefined => {
     return chats.find((c) => !c.isGroup && c.members?.includes(contactId))?.id;
   };
+
+  const calls = useMemo(() => {
+    const history = callStatsService.getCallHistory();
+    const currentUserId = user?.id ?? '';
+    return history.map((r) => {
+      const chat = getChatById(r.chatId);
+      const contactId = chat?.members?.find((m) => m !== currentUserId) ?? r.chatId;
+      const contactName = r.contactName ?? chat?.name ?? 'Собеседник';
+      return {
+        id: r.id,
+        contactId,
+        contact: { id: contactId, name: contactName, isOnline: false },
+        type: (r.isVideo ? 'video' : 'audio') as Call['type'],
+        status: 'outgoing' as const,
+        timestamp: new Date(r.endedAt),
+        duration: r.durationSeconds,
+      } satisfies Call;
+    });
+  }, [user?.id, getChatById, refreshTrigger]);
 
   // Group calls by date
   const groupedCalls = useMemo(() => {
@@ -106,17 +145,6 @@ const CallsPage = () => {
         <div className="flex items-center justify-between h-14 px-4">
           <h1 className="text-xl font-semibold">Звонки</h1>
           <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground text-xs"
-              onClick={() => {
-                const contact = calls[0]?.contact;
-                if (contact) setIncomingCall(contact, 'audio');
-              }}
-            >
-              Тест входящего
-            </Button>
             <Button variant="ghost" size="sm" className="text-primary">
               Изменить
             </Button>
