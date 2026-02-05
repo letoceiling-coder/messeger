@@ -264,7 +264,9 @@ export class WebRTCService {
       this.chatId = null;
     }
     this.remoteStream = null;
-    this.onCallEndCallback?.();
+    const cb = this.onCallEndCallback;
+    this.onCallEndCallback = undefined;
+    cb?.();
   }
 
   rejectCall(chatId: string) {
