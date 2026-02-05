@@ -37,7 +37,6 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const webrtcRef = useRef<WebRTCService | null>(null);
   const pendingOfferRef = useRef<{ chatId: string; offer: RTCSessionDescriptionInit; videoMode: boolean } | null>(null);
-  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -53,10 +52,6 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     setLocalStream(null);
     setRemoteStream(null);
     pendingOfferRef.current = null;
-    if (connectTimeoutRef.current) {
-      clearTimeout(connectTimeoutRef.current);
-      connectTimeoutRef.current = null;
-    }
   }, []);
 
   useEffect(() => {
@@ -133,10 +128,6 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   }, [getChatById, getContactById, cleanupCall, clearTimer]);
 
   const startOutgoingCall = useCallback((contact: Contact, type: CallType, chatId?: string) => {
-    if (connectTimeoutRef.current) {
-      clearTimeout(connectTimeoutRef.current);
-      connectTimeoutRef.current = null;
-    }
     cleanupCall();
 
     setActiveCall({
@@ -153,65 +144,65 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       frontCamera: true,
     });
 
-    if (chatId) {
-      const socket = getSocket(localStorage.getItem('accessToken'));
-      if (socket?.connected) {
-        const webrtc = new WebRTCService(socket);
-        webrtcRef.current = webrtc;
-
-        webrtc.onRemoteStream((stream) => {
-          setRemoteStream(stream);
-          setActiveCall((prev) => prev && prev.direction === 'outgoing'
-            ? { ...prev, state: 'connected', startTime: Date.now() }
-            : prev);
-        });
-        webrtc.onCallEnd(() => {
-          cleanupCall();
-          setActiveCall(null);
-          clearTimer();
-        });
-        webrtc.onConnectionFailed(() => {
-          toast.error('Не удалось установить соединение');
-          cleanupCall();
-          setActiveCall(null);
-        });
-        webrtc.onNoAnswer(() => {
-          toast.error('Собеседник не ответил');
-          cleanupCall();
-          setActiveCall(null);
-        });
-        webrtc.onCallBusy(() => {
-          toast.error('Пользователь занят');
-          cleanupCall();
-          setActiveCall(null);
-        });
-        webrtc.onCallError((msg) => {
-          toast.error(msg);
-          cleanupCall();
-          setActiveCall(null);
-        });
-
-        webrtc.initiateCall(chatId, { video: type === 'video' })
-          .then((stream) => {
-            setLocalStream(stream);
-          })
-          .catch((err) => {
-            toast.error(err?.message ?? 'Ошибка запуска звонка');
-            cleanupCall();
-            setActiveCall(null);
-          });
-        return;
-      }
+    if (!chatId) {
+      toast.error('Для звонка необходим чат. Откройте диалог и попробуйте снова.');
+      cleanupCall();
+      setActiveCall(null);
+      return;
     }
 
-    connectTimeoutRef.current = setTimeout(() => {
-      connectTimeoutRef.current = null;
-      setActiveCall((prev) =>
-        prev && prev.direction === 'outgoing'
-          ? { ...prev, state: 'connected', startTime: Date.now() }
-          : prev
-      );
-    }, 2000);
+    const socket = getSocket(localStorage.getItem('accessToken'));
+    if (!socket?.connected) {
+      toast.error('Нет соединения с сервером. Проверьте интернет и попробуйте снова.');
+      cleanupCall();
+      setActiveCall(null);
+      return;
+    }
+
+    const webrtc = new WebRTCService(socket);
+    webrtcRef.current = webrtc;
+
+    webrtc.onRemoteStream((stream) => {
+      setRemoteStream(stream);
+      setActiveCall((prev) => prev && prev.direction === 'outgoing'
+        ? { ...prev, state: 'connected', startTime: Date.now() }
+        : prev);
+    });
+    webrtc.onCallEnd(() => {
+      cleanupCall();
+      setActiveCall(null);
+      clearTimer();
+    });
+    webrtc.onConnectionFailed(() => {
+      toast.error('Не удалось установить соединение');
+      cleanupCall();
+      setActiveCall(null);
+    });
+    webrtc.onNoAnswer(() => {
+      toast.error('Собеседник не ответил');
+      cleanupCall();
+      setActiveCall(null);
+    });
+    webrtc.onCallBusy(() => {
+      toast.error('Пользователь занят');
+      cleanupCall();
+      setActiveCall(null);
+    });
+    webrtc.onCallError((msg) => {
+      toast.error(msg);
+      cleanupCall();
+      setActiveCall(null);
+    });
+
+    webrtc.initiateCall(chatId, { video: type === 'video' })
+      .then((stream) => {
+        setLocalStream(stream);
+      })
+      .catch((err) => {
+        toast.error(err?.message ?? 'Ошибка запуска звонка');
+        cleanupCall();
+        setActiveCall(null);
+      });
   }, [cleanupCall, clearTimer]);
 
   const setIncomingCall = useCallback((contact: Contact, type: CallType) => {
@@ -237,7 +228,12 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
     if (pending && call.direction === 'incoming') {
       const socket = getSocket(localStorage.getItem('accessToken'));
-      if (!socket?.connected) return;
+      if (!socket?.connected) {
+        toast.error('Нет соединения с сервером');
+        cleanupCall();
+        setActiveCall(null);
+        return;
+      }
 
       const webrtc = new WebRTCService(socket);
       webrtcRef.current = webrtc;
@@ -268,7 +264,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         setActiveCall(null);
       }
     } else {
-      setActiveCall((prev) => prev ? { ...prev, state: 'connected', startTime: Date.now() } : null);
+      // Нет реального offer — нельзя имитировать соединение
+      toast.error('Невозможно принять звонок: данные звонка отсутствуют');
+      cleanupCall();
+      setActiveCall(null);
     }
   }, [activeCall, cleanupCall, clearTimer]);
 
