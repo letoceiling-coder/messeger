@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Phone, Video, MoreVertical, Paperclip, Smile, Send, Mic, Check, CheckCheck, Reply, Copy, Trash2, Forward, Pin, Pencil, FileText, Sticker as StickerIcon, X, Megaphone } from 'lucide-react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { ArrowLeft, Phone, Video, MoreVertical, Paperclip, Smile, Send, Mic, Check, CheckCheck, Reply, Copy, Trash2, Forward, Pin, Pencil, FileText, Sticker as StickerIcon, X, Megaphone, MessageCircle, Search, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import UserAvatar from '@/components/common/Avatar';
@@ -41,6 +41,10 @@ import StickerPanel from '@/components/chat/StickerPanel';
 import StickerBubble from '@/components/chat/StickerBubble';
 import PinBanner, { HIGHLIGHT_DURATION_MS } from '@/components/chat/PinBanner';
 import ChannelPostFooter from '@/components/chat/ChannelPostFooter';
+import MessageReactionsBar from '@/components/chat/MessageReactionsBar';
+import GroupInfoSection from '@/components/chat/GroupInfoSection';
+import CreatePollSheet from '@/components/chat/CreatePollSheet';
+import PollBubble, { parsePollContent } from '@/components/chat/PollBubble';
 import CommentsSheet from '@/components/chat/CommentsSheet';
 import BotButtons from '@/components/chat/BotButtons';
 import BotKeyboard from '@/components/chat/BotKeyboard';
@@ -49,6 +53,12 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { useVideoNoteRecorder } from '@/hooks/useVideoNoteRecorder';
+import { useChatDraft } from '@/hooks/useChatDraft';
+import EmptyState from '@/components/common/EmptyState';
+import { MessageListSkeleton } from '@/components/common/MessageListSkeleton';
+import { api } from '@/services/api';
+import { mapApiMessageToMessage, type ApiMessage } from '@/services/messageMapper';
+import { Input } from '@/components/ui/input';
 import type { Sticker } from '@/types/messenger';
 
 const EMOJI_ONLY_REGEX = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F|\s)+$/u;
@@ -60,14 +70,14 @@ function isOnlyEmoji(text: string): boolean {
 const ChatPage = () => {
   const { chatId } = useParams<{ chatId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const loadingMoreRef = useRef(false);
   const scrollRestoreRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   
-  const [inputValue, setInputValue] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
+  const [inputValue, setInputValue, clearDraft] = useChatDraft(chatId ?? undefined);
   const [attachOpen, setAttachOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
@@ -76,7 +86,10 @@ const ChatPage = () => {
   const [viewerType, setViewerType] = useState<'image' | 'video'>('image');
   const [activeVideoNoteId, setActiveVideoNoteId] = useState<string | null>(null);
   const [recordingVoice, setRecordingVoice] = useState(false);
+  const [voicePreviewBlob, setVoicePreviewBlob] = useState<{ blob: Blob; durationSec: number } | null>(null);
   const [recordingVideoNote, setRecordingVideoNote] = useState(false);
+  const voicePointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const voiceRecordingActiveRef = useRef(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordStartTimeRef = useRef<number>(0);
@@ -94,7 +107,7 @@ const ChatPage = () => {
   const { getChatById, chats, updateChat, subscribeToChannel, unsubscribeFromChannel, isChannelSubscribed } = useChats();
   const { contacts } = useContacts();
   const { startOutgoingCall } = useCall();
-  const { getMessages, setMessagesForChat, addMessageToChat, sendTextMessage, sendVoiceMessage, sendVideoNoteMessage, sendMediaMessage, sendDocumentMessage, editMessageContent, deleteMessageFromServer, deleteForEveryone, updateMessageReaction, loadMoreMessages, hasMoreOlder, loadMessagesForChat } = useMessages();
+  const { getMessages, setMessagesForChat, addMessageToChat, sendTextMessage, sendVoiceMessage, sendVideoNoteMessage, sendMediaMessage, sendDocumentMessage, sendPollMessage, sendLocationMessage, editMessageContent, deleteMessageFromServer, deleteForEveryone, updateMessageReaction, loadMoreMessages, hasMoreOlder, loadMessagesForChat, messagesErrorByChat, messagesLoading } = useMessages();
   const ws = useWebSocket();
   const chat = useMemo(() => {
     if (!chatId) return null;
@@ -129,10 +142,16 @@ const ChatPage = () => {
   const [pinnedBarVisible, setPinnedBarVisible] = useState<Record<string, boolean>>({});
   const [allPinnedSheetOpen, setAllPinnedSheetOpen] = useState(false);
   const [chatInfoOpen, setChatInfoOpen] = useState(false);
+  const [pollSheetOpen, setPollSheetOpen] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [deleteModal, setDeleteModal] = useState<{ messageId: string; scope: 'self' | 'all' } | null>(null);
   const [forwardMessage, setForwardMessage] = useState<Message | null>(null);
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Message[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewedPostIdsRef = useRef<Set<string>>(new Set());
   const readEmittedIdsRef = useRef<Set<string>>(new Set());
 
@@ -145,6 +164,29 @@ const ChatPage = () => {
   useEffect(() => {
     if (chatId) loadMessagesForChat(chatId);
   }, [chatId, loadMessagesForChat]);
+
+  // Скролл к сообщению при переходе из глобального поиска
+  useEffect(() => {
+    const scrollToId = (location.state as { scrollToMessageId?: string } | null)?.scrollToMessageId;
+    if (!chatId || !scrollToId || !messages.length) return;
+    const msg = messages.find((m) => m.id === scrollToId);
+    if (!msg) return;
+    const timer = setTimeout(() => {
+      const el = document.getElementById(`msg-${scrollToId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setHighlightMessageId(scrollToId);
+        setTimeout(() => setHighlightMessageId(null), HIGHLIGHT_DURATION_MS);
+      }
+      navigate(location.pathname, { replace: true, state: {} });
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [chatId, messages.length, location.state, navigate, location.pathname]);
+
+  // Join chat room for real-time messages (chats created after connection)
+  useEffect(() => {
+    if (chatId) ws.emitChatJoin(chatId);
+  }, [chatId, ws]);
 
   // Reset read-emitted set when switching chats
   useEffect(() => {
@@ -186,7 +228,7 @@ const ChatPage = () => {
 
   // Recording timer (используем Date.now для надёжного отображения)
   useEffect(() => {
-    if (!recordingVoice && !recordingVideoNote) {
+    if (!recordingVoice && !voicePreviewBlob && !recordingVideoNote) {
       if (recordTimerRef.current) {
         clearInterval(recordTimerRef.current);
         recordTimerRef.current = null;
@@ -202,7 +244,7 @@ const ChatPage = () => {
     return () => {
       if (recordTimerRef.current) clearInterval(recordTimerRef.current);
     };
-  }, [recordingVoice, recordingVideoNote]);
+  }, [recordingVoice, voicePreviewBlob, recordingVideoNote]);
 
   const prevMessagesLenRef = useRef(0);
   const userScrolledUpRef = useRef(false);
@@ -250,7 +292,7 @@ const ChatPage = () => {
     if (chat.isGroup) {
       return `${chat.members?.length || 0} участников`;
     }
-    if (isTyping) return 'печатает...';
+    if (chat.isTyping) return 'печатает...';
     if (chat.isOnline) return 'онлайн';
     if (chat.lastSeen) return formatLastSeen(chat.lastSeen);
     return '';
@@ -264,16 +306,17 @@ const ChatPage = () => {
       const ok = await editMessageContent(chatId, editMessageId, text);
       if (ok) {
         setEditMessageId(null);
-        setInputValue('');
+        clearDraft();
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
       }
       return;
     }
 
-    setInputValue('');
+    clearDraft();
     const replyId = replyToMessage?.id;
     setReplyToMessage(null);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    if (chatId) ws.emitTypingStop(chatId);
 
     await sendTextMessage(chatId, text, replyId);
   };
@@ -312,7 +355,25 @@ const ChatPage = () => {
       fileInputRef.current?.click();
     } else if (action === 'contact') {
       setContactPickerOpen(true);
+    } else if (action === 'poll') {
+      setPollSheetOpen(true);
+    } else if (action === 'location') {
+      if (!chatId) return;
+      navigator.geolocation?.getCurrentPosition(
+        (pos) => {
+          sendLocationMessage(chatId, pos.coords.latitude, pos.coords.longitude);
+        },
+        () => {
+          toast.error('Не удалось получить геолокацию');
+        },
+        { enableHighAccuracy: true }
+      );
     }
+  };
+
+  const handlePollSubmit = async (data: { question: string; options: string[] }) => {
+    if (!chatId) return;
+    await sendPollMessage(chatId, data.question, data.options);
   };
 
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -386,6 +447,110 @@ const ChatPage = () => {
     ]);
     setContactPickerOpen(false);
   };
+
+  const SWIPE_CANCEL_THRESHOLD = 60;
+
+  const handleVoicePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      voicePointerStartRef.current = { x: e.clientX, y: e.clientY };
+      voiceRecordingActiveRef.current = false;
+      startRecording().then((ok) => {
+        if (ok) {
+          voiceRecordingActiveRef.current = true;
+          setRecordingVoice(true);
+        }
+      });
+      const onMove = (ev: PointerEvent) => {
+        if (!voicePointerStartRef.current) return;
+        const dx = voicePointerStartRef.current.x - ev.clientX;
+        if (dx > SWIPE_CANCEL_THRESHOLD) {
+          cancelRecording();
+          voiceRecordingActiveRef.current = false;
+          setRecordingVoice(false);
+          voicePointerStartRef.current = null;
+          document.removeEventListener('pointermove', onMove);
+          document.removeEventListener('pointerup', onUp);
+        }
+      };
+      const onUp = () => {
+        voicePointerStartRef.current = null;
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        if (voiceRecordingActiveRef.current) {
+          voiceRecordingActiveRef.current = false;
+          stopRecording().then((result) => {
+            setRecordingVoice(false);
+            if (result) setVoicePreviewBlob({ blob: result.blob, durationSec: result.durationSec });
+          });
+        } else {
+          setRecordingVoice(false);
+        }
+      };
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+    },
+    [startRecording, cancelRecording, stopRecording]
+  );
+
+  const handleVoiceSend = useCallback(async () => {
+    if (!voicePreviewBlob || !chatId) return;
+    await sendVoiceMessage(chatId, voicePreviewBlob.blob, voicePreviewBlob.durationSec);
+    setVoicePreviewBlob(null);
+  }, [voicePreviewBlob, chatId, sendVoiceMessage]);
+
+  const handleVoicePreviewCancel = useCallback(() => {
+    setVoicePreviewBlob(null);
+  }, []);
+
+  const handleSearchInChat = useCallback(
+    (query: string) => {
+      if (!chatId || !query.trim() || !user?.id) {
+        setSearchResults([]);
+        return;
+      }
+      setSearchLoading(true);
+      api
+        .get<ApiMessage[]>(`/messages/search/chat/${chatId}?q=${encodeURIComponent(query.trim())}`)
+        .then((data) => {
+          const list = Array.isArray(data) ? data : [];
+          setSearchResults(list.map((m) => mapApiMessageToMessage(m, user.id)));
+        })
+        .catch(() => setSearchResults([]))
+        .finally(() => setSearchLoading(false));
+    },
+    [chatId, user?.id]
+  );
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    searchDebounceRef.current = setTimeout(() => {
+      searchDebounceRef.current = null;
+      handleSearchInChat(searchQuery);
+    }, 300);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [searchQuery, searchOpen, handleSearchInChat]);
+
+  const handleSearchResultClick = useCallback(
+    (msg: Message) => {
+      setSearchOpen(false);
+      setSearchQuery('');
+      setSearchResults([]);
+      setHighlightMessageId(msg.id);
+      setTimeout(() => {
+        const el = document.getElementById(`msg-${msg.id}`);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+      setTimeout(() => setHighlightMessageId(null), HIGHLIGHT_DURATION_MS);
+    },
+    []
+  );
 
   const handleSendSticker = useCallback(
     (sticker: Sticker) => {
@@ -654,7 +819,7 @@ const ChatPage = () => {
               <p
                 className={cn(
                   'text-xs truncate',
-                  chat.isChannel ? 'text-white/80' : chat.isOnline || isTyping ? 'text-primary' : 'text-muted-foreground'
+                  chat.isChannel ? 'text-white/80' : chat.isOnline || chat.isTyping ? 'text-primary' : 'text-muted-foreground'
                 )}
               >
                 {chat.isChannel && chat.subscribersCount != null
@@ -670,8 +835,8 @@ const ChatPage = () => {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => contactInfo && startOutgoingCall(contactInfo, 'audio')}
-                  disabled={!contactInfo}
+                  onClick={() => contactInfo && chatId && startOutgoingCall(contactInfo, 'audio', chatId)}
+                  disabled={!contactInfo || !chatId}
                   className={chat.isChannel ? 'text-white hover:bg-white/10' : ''}
                 >
                   <Phone className="h-5 w-5" />
@@ -679,13 +844,24 @@ const ChatPage = () => {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => contactInfo && startOutgoingCall(contactInfo, 'video')}
-                  disabled={!contactInfo}
+                  onClick={() => contactInfo && chatId && startOutgoingCall(contactInfo, 'video', chatId)}
+                  disabled={!contactInfo || !chatId}
                   className={chat.isChannel ? 'text-white hover:bg-white/10' : ''}
                 >
                   <Video className="h-5 w-5" />
                 </Button>
               </>
+            )}
+            {!chat.isChannel && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSearchOpen(true)}
+                className={chat.isChannel ? 'text-white hover:bg-white/10' : ''}
+                aria-label="Поиск в чате"
+              >
+                <Search className="h-5 w-5" />
+              </Button>
             )}
             <Button
               variant="ghost"
@@ -697,6 +873,45 @@ const ChatPage = () => {
           </div>
         </div>
       </header>
+
+      {/* Поиск в чате */}
+      <Sheet open={searchOpen} onOpenChange={setSearchOpen}>
+        <SheetContent side="top" className="h-[50vh] rounded-t-2xl">
+          <SheetHeader>
+            <SheetTitle>Поиск в чате</SheetTitle>
+          </SheetHeader>
+          <div className="mt-4 space-y-3">
+            <Input
+              placeholder="Введите запрос..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
+              className="w-full"
+            />
+            <div className="overflow-y-auto max-h-[calc(50vh-120px)]">
+              {searchLoading ? (
+                <p className="text-sm text-muted-foreground py-4">Поиск...</p>
+              ) : searchResults.length === 0 && searchQuery.trim() ? (
+                <p className="text-sm text-muted-foreground py-4">Ничего не найдено</p>
+              ) : (
+                searchResults.map((msg) => (
+                  <button
+                    key={msg.id}
+                    type="button"
+                    onClick={() => handleSearchResultClick(msg)}
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-secondary transition-colors"
+                  >
+                    <p className="text-sm truncate">{msg.content || '(медиа)'}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {formatMessageTime(msg.timestamp)}
+                    </p>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Pin Bar — циклический навигатор: tap → скролл к current, highlight, индекс (i+1)%N; × только скрывает панель */}
       {isPinnedBarVisible && (
@@ -724,6 +939,26 @@ const ChatPage = () => {
           }
         }}
       >
+        {messagesErrorByChat[chatId ?? ''] ? (
+          <div className="flex flex-col items-center justify-center py-16 px-6 gap-3">
+            <p className="text-destructive text-sm text-center">{messagesErrorByChat[chatId ?? '']}</p>
+            <button
+              type="button"
+              onClick={() => chatId && loadMessagesForChat(chatId)}
+              className="text-sm font-medium text-primary hover:underline"
+            >
+              Повторить
+            </button>
+          </div>
+        ) : messagesLoading[chatId ?? ''] && groupedMessages.length === 0 ? (
+          <MessageListSkeleton />
+        ) : groupedMessages.length === 0 && !chat?.isChannel ? (
+          <EmptyState
+            icon={MessageCircle}
+            title="Начните переписку"
+            description="Отправьте сообщение, фото, голосовое или видеокружок"
+          />
+        ) : (
         <AnimatePresence>
           {groupedMessages.map((group) => (
             <div key={group.date} className="mb-2">
@@ -861,6 +1096,53 @@ const ChatPage = () => {
                             </div>
                           </button>
                         </div>
+                      ) : (message.type === 'poll' || parsePollContent(message.content)) ? (
+                        <PollBubble
+                          content={message.content}
+                          isOutgoing={message.isOutgoing}
+                          formatTime={formatMessageTime}
+                          timestamp={message.timestamp}
+                          renderStatus={message.isOutgoing ? () => renderMessageStatus(message) : undefined}
+                        />
+                      ) : (message.type === 'location' || (() => {
+                        try {
+                          const d = JSON.parse(message.content);
+                          return d?._type === 'location';
+                        } catch { return false; }
+                      })()) ? (
+                        <a
+                          href={`https://www.openstreetmap.org/?mlat=${(() => {
+                            try {
+                              const d = JSON.parse(message.content);
+                              return d?.lat ?? 0;
+                            } catch { return 0; }
+                          })()}&mlon=${(() => {
+                            try {
+                              const d = JSON.parse(message.content);
+                              return d?.lng ?? 0;
+                            } catch { return 0; }
+                          })()}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={cn(
+                            'flex items-center gap-3 min-w-[var(--message-bubble-min-w)] max-w-[var(--message-bubble-max-w)] rounded-bubble px-3 py-2 shadow-soft hover:opacity-90 transition-colors',
+                            message.isOutgoing
+                              ? 'rounded-bubble-outgoing bg-[hsl(var(--message-outgoing))] text-[hsl(var(--message-outgoing-foreground))]'
+                              : 'rounded-bubble-incoming bg-[hsl(var(--message-incoming))] text-[hsl(var(--message-incoming-foreground))]'
+                          )}
+                        >
+                          <MapPin className="h-8 w-8 shrink-0 text-primary" />
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium">Геолокация</p>
+                            <p className="text-xs text-muted-foreground">Нажмите для просмотра на карте</p>
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <span className="text-[10px] text-muted-foreground">
+                                {formatMessageTime(message.timestamp)}
+                              </span>
+                              {message.isOutgoing && renderMessageStatus(message)}
+                            </div>
+                          </div>
+                        </a>
                       ) : message.type === 'contact' ? (
                         <div
                           className={cn(
@@ -1024,6 +1306,18 @@ const ChatPage = () => {
                         />
                       </div>
                     )}
+                    {!chat?.isChannel && (
+                      <div className={cn('flex px-1', message.isOutgoing ? 'justify-end' : 'justify-start')}>
+                        <MessageReactionsBar
+                          message={message}
+                          isOutgoing={message.isOutgoing}
+                          onReaction={(emoji, add) => {
+                            if (chatId) updateMessageReaction(chatId, message.id, emoji, add);
+                          }}
+                          currentUserId={user?.id}
+                        />
+                      </div>
+                    )}
                     {chat?.isBot && !message.isOutgoing && message.senderId === chatId && message.buttons?.length > 0 && (
                       <div className="flex justify-start px-1 mt-1">
                         <div className="min-w-[var(--message-bubble-min-w)] max-w-[var(--message-bubble-max-w)]">
@@ -1161,6 +1455,7 @@ const ChatPage = () => {
             </div>
           ))}
         </AnimatePresence>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -1222,7 +1517,7 @@ const ChatPage = () => {
       {/* Input area — для каналов скрыта (только чтение постов); плавающий стиль */}
       {!chat?.isChannel && (
       <div className="sticky bottom-0 bg-background border-t border-border pb-safe rounded-t-2xl shadow-soft">
-        {(replyToMessage || editMessageId) && !recordingVoice && !recordingVideoNote && (
+        {(replyToMessage || editMessageId) && !recordingVoice && !voicePreviewBlob && !recordingVideoNote && (
           <div className="flex items-center gap-2 px-3 py-2 bg-muted/60 border-b border-border">
             <div className="flex-1 min-w-0">
               {replyToMessage && (
@@ -1264,7 +1559,7 @@ const ChatPage = () => {
             Скопировано
           </div>
         )}
-        {chat?.isBot && chat?.keyboard?.length && !recordingVoice && !recordingVideoNote && (
+        {chat?.isBot && chat?.keyboard?.length && !recordingVoice && !voicePreviewBlob && !recordingVideoNote && (
           <BotKeyboard
             rows={chat.keyboard}
             onButtonPress={(label) => {
@@ -1282,46 +1577,49 @@ const ChatPage = () => {
             }}
           />
         )}
-        {recordingVoice ? (
+        {recordingVoice || voicePreviewBlob ? (
           <div className="flex items-center gap-3 p-3">
-            <span className="flex items-center gap-2 text-destructive">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-destructive" />
-              </span>
-              <span className="tabular-nums font-medium">
-                {Math.floor(recordSeconds / 60)}:{(recordSeconds % 60).toString().padStart(2, '0')}
-              </span>
-            </span>
-            <span className="text-sm text-muted-foreground flex-1">
-              Идёт запись
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground"
-              onClick={() => {
-                cancelRecording();
-                setRecordingVoice(false);
-              }}
-            >
-              Отмена
-            </Button>
-            <Button
-              size="sm"
-              disabled={uploadingMedia}
-              onClick={async () => {
-                if (recordingVoice && chatId) {
-                  const result = await stopRecording();
-                  if (result) {
-                    await sendVoiceMessage(chatId, result.blob, result.durationSec);
-                  }
-                }
-                setRecordingVoice(false);
-              }}
-            >
-              {uploadingMedia ? 'Отправка…' : 'Отправить'}
-            </Button>
+            {recordingVoice ? (
+              <>
+                <span className="flex items-center gap-2 text-destructive">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-destructive" />
+                  </span>
+                  <span className="tabular-nums font-medium">
+                    {Math.floor(recordSeconds / 60)}:{(recordSeconds % 60).toString().padStart(2, '0')}
+                  </span>
+                </span>
+                <span className="text-sm text-muted-foreground flex-1">
+                  Свайп влево для отмены
+                </span>
+              </>
+            ) : voicePreviewBlob ? (
+              <>
+                <span className="flex items-center gap-2 text-muted-foreground">
+                  <Mic className="h-4 w-4" />
+                  <span className="tabular-nums text-sm">
+                    {Math.floor(voicePreviewBlob.durationSec / 60)}:{(voicePreviewBlob.durationSec % 60).toString().padStart(2, '0')}
+                  </span>
+                </span>
+                <span className="text-sm text-muted-foreground flex-1">Голосовое</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  onClick={handleVoicePreviewCancel}
+                >
+                  Отмена
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={uploadingMedia}
+                  onClick={handleVoiceSend}
+                >
+                  {uploadingMedia ? 'Отправка…' : 'Отправить'}
+                </Button>
+              </>
+            ) : null}
           </div>
         ) : (
           <div className="flex items-end gap-2 p-2">
@@ -1412,11 +1710,9 @@ const ChatPage = () => {
                   </Button>
                   <Button
                     size="icon"
-                    className="shrink-0 rounded-full bg-secondary text-muted-foreground"
-                    onClick={async () => {
-                      const ok = await startRecording();
-                      if (ok) setRecordingVoice(true);
-                    }}
+                    className="shrink-0 rounded-full bg-secondary text-muted-foreground touch-manipulation"
+                    onPointerDown={handleVoicePointerDown}
+                    aria-label="Удержите для записи голоса"
                   >
                     <Mic className="h-5 w-5" />
                   </Button>
@@ -1449,6 +1745,12 @@ const ChatPage = () => {
         open={attachOpen}
         onOpenChange={setAttachOpen}
         onSelect={handleAttachSelect}
+      />
+
+      <CreatePollSheet
+        open={pollSheetOpen}
+        onOpenChange={setPollSheetOpen}
+        onSubmit={handlePollSubmit}
       />
 
       <Sheet open={contactPickerOpen} onOpenChange={setContactPickerOpen}>
@@ -1602,6 +1904,16 @@ const ChatPage = () => {
                   >
                     Отписаться от канала
                   </Button>
+                </div>
+              )}
+              {chat.isGroup && chatId && (
+                <div className="border-b border-border py-4">
+                  <GroupInfoSection
+                    chatId={chatId}
+                    chatName={chat.name ?? 'Группа'}
+                    onClose={() => setChatInfoOpen(false)}
+                    onLeave={() => navigate('/')}
+                  />
                 </div>
               )}
               <div className="flex-1 overflow-y-auto py-4">

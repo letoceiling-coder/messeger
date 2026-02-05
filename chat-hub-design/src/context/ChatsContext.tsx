@@ -6,6 +6,18 @@ import { mapApiChatToChat, type ApiChat } from '@/services/chatMapper';
 
 type ChatUpdate = Partial<Pick<Chat, 'isPinned' | 'isMuted' | 'isArchived' | 'unreadCount' | 'isTyping' | 'lastMessage'>>;
 
+export interface ChatDetailsMember {
+  userId: string;
+  role: string;
+  user: { id: string; username: string; avatarUrl: string | null };
+}
+export interface ChatDetails {
+  id: string;
+  name: string | null;
+  type: string;
+  members: ChatDetailsMember[];
+}
+
 interface ChatsContextValue {
   chats: Chat[];
   chatsLoading: boolean;
@@ -20,6 +32,12 @@ interface ChatsContextValue {
   deleteChat: (chatId: string) => void;
   addChat: (chat: Chat) => void;
   getChatById: (chatId: string) => Chat | undefined;
+  /** Загрузить полную информацию о чате (участники с ролями) */
+  fetchChatDetails: (chatId: string) => Promise<ChatDetails | null>;
+  addMember: (chatId: string, userId: string) => Promise<boolean>;
+  removeMember: (chatId: string, userId: string) => Promise<boolean>;
+  updateGroupChat: (chatId: string, name: string, description?: string) => Promise<boolean>;
+  leaveGroup: (chatId: string) => Promise<boolean>;
   pinChat: (chatId: string, pinned: boolean) => void;
   muteChat: (chatId: string, muted: boolean) => void;
   archiveChat: (chatId: string, archived: boolean) => void;
@@ -141,17 +159,82 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
     [chats]
   );
 
-  const pinChat = useCallback((chatId: string, pinned: boolean) => {
-    updateChat(chatId, { isPinned: pinned });
+  const fetchChatDetails = useCallback(async (chatId: string): Promise<ChatDetails | null> => {
+    try {
+      const data = await api.get<ChatDetails & { members: ChatDetailsMember[] }>(`/chats/${chatId}`);
+      return data ? { id: data.id, name: data.name, type: data.type, members: data.members ?? [] } : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const addMember = useCallback(async (chatId: string, userId: string): Promise<boolean> => {
+    try {
+      await api.post(`/chats/${chatId}/members`, { userId });
+      await loadChats();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [loadChats]);
+
+  const removeMember = useCallback(async (chatId: string, userId: string): Promise<boolean> => {
+    try {
+      await api.delete(`/chats/${chatId}/members/${userId}`);
+      await loadChats();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [loadChats]);
+
+  const updateGroupChat = useCallback(async (chatId: string, name: string, description?: string): Promise<boolean> => {
+    try {
+      await api.patch(`/chats/${chatId}/group`, { name, description });
+      updateChat(chatId, { name });
+      return true;
+    } catch {
+      return false;
+    }
   }, [updateChat]);
+
+  const leaveGroup = useCallback(async (chatId: string): Promise<boolean> => {
+    try {
+      await api.post(`/chats/${chatId}/leave`);
+      deleteChat(chatId);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [deleteChat]);
+
+  const pinChat = useCallback(
+    async (chatId: string, pinned: boolean) => {
+      updateChat(chatId, { isPinned: pinned });
+      try {
+        await api.patch(`/chats/${chatId}/pin-chat`, { pinned });
+      } catch {
+        updateChat(chatId, { isPinned: !pinned });
+      }
+    },
+    [updateChat]
+  );
 
   const muteChat = useCallback((chatId: string, muted: boolean) => {
     updateChat(chatId, { isMuted: muted });
   }, [updateChat]);
 
-  const archiveChat = useCallback((chatId: string, archived: boolean) => {
-    updateChat(chatId, { isArchived: archived });
-  }, [updateChat]);
+  const archiveChat = useCallback(
+    async (chatId: string, archived: boolean) => {
+      updateChat(chatId, { isArchived: archived });
+      try {
+        await api.patch(`/chats/${chatId}/archive`, { archived });
+      } catch {
+        updateChat(chatId, { isArchived: !archived });
+      }
+    },
+    [updateChat]
+  );
 
   const subscribeToChannel = useCallback((chatId: string) => {
     setSubscribedChannelIds((prev) => new Set(prev).add(chatId));
@@ -183,6 +266,11 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
       onNewMessage,
       deleteChat,
       getChatById,
+      fetchChatDetails,
+      addMember,
+      removeMember,
+      updateGroupChat,
+      leaveGroup,
       pinChat,
       muteChat,
       archiveChat,
@@ -203,6 +291,11 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
       onNewMessage,
       deleteChat,
       getChatById,
+      fetchChatDetails,
+      addMember,
+      removeMember,
+      updateGroupChat,
+      leaveGroup,
       pinChat,
       muteChat,
       archiveChat,

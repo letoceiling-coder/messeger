@@ -1,5 +1,6 @@
 import { ThemeProvider } from "next-themes";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { AppStateProvider } from "./context/AppStateContext";
@@ -22,6 +23,7 @@ import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/ProfilePage";
 import AuthPage from "./pages/AuthPage";
 import CreateChannelPage from "./pages/CreateChannelPage";
+import CreateGroupPage from "./pages/CreateGroupPage";
 import FeedPage from "./pages/feed/FeedPage";
 import FeedSearchPage from "./pages/feed/FeedSearchPage";
 import FeedCreatePage from "./pages/feed/FeedCreatePage";
@@ -71,6 +73,7 @@ const App = () => (
                 <WebSocketProvider>
                 <FeedProvider>
                 <ThemeProvider attribute="class" defaultTheme="system" storageKey="messenger-theme" enableSystem>
+                <Toaster position="top-center" richColors />
                 <TooltipProvider>
                     <CallOverlay />
                     <Routes>
@@ -86,6 +89,7 @@ const App = () => (
                         <Route path="/chat/:chatId/comments/:postId" element={<PostCommentsPage />} />
                         <Route path="/profile" element={<ProfilePage />} />
                         <Route path="/channel/create" element={<CreateChannelPage />} />
+                        <Route path="/group/create" element={<CreateGroupPage />} />
                         <Route path="/feed" element={<FeedLayout />}>
                           <Route index element={<FeedPage />} />
                           <Route path="search" element={<FeedSearchPage />} />

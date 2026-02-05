@@ -1,10 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { PhoneOff, Mic, MicOff, Video, VideoOff, SwitchCamera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import UserAvatar from '@/components/common/Avatar';
 import { CallSession } from '@/types/messenger';
-import { motion, useMotionValue, useTransform, PanInfo } from 'framer-motion';
-import { cn } from '@/lib/utils';
+import { motion, useMotionValue, PanInfo } from 'framer-motion';
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -14,6 +13,8 @@ function formatDuration(seconds: number): string {
 
 interface VideoCallScreenProps {
   call: CallSession;
+  localStream?: MediaStream;
+  remoteStream?: MediaStream;
   durationSeconds: number;
   onEnd: () => void;
   onToggleMute: () => void;
@@ -27,6 +28,8 @@ const PIP_PADDING = 16;
 
 export default function VideoCallScreen({
   call,
+  localStream,
+  remoteStream,
   durationSeconds,
   onEnd,
   onToggleMute,
@@ -37,6 +40,20 @@ export default function VideoCallScreen({
   const [controlsVisible, setControlsVisible] = useState(true);
   const x = useMotionValue(typeof window !== 'undefined' ? window.innerWidth - PIP_SIZE - PIP_PADDING : 0);
   const y = useMotionValue(PIP_PADDING + 60);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStream) {
+      remoteVideoRef.current.srcObject = remoteStream;
+    }
+  }, [remoteStream]);
+
+  useEffect(() => {
+    if (localVideoRef.current && localStream) {
+      localVideoRef.current.srcObject = localStream;
+    }
+  }, [localStream]);
 
   return (
     <motion.div
@@ -46,14 +63,24 @@ export default function VideoCallScreen({
       className="fixed inset-0 z-[200] flex flex-col bg-black"
       onClick={() => setControlsVisible((v) => !v)}
     >
-      {/* Fullscreen remote video — placeholder */}
-      <div className="absolute inset-0 flex items-center justify-center bg-muted/20">
-        <UserAvatar
-          name={call.contact.name}
-          size="2xl"
-          isOnline={call.contact.isOnline}
-          className="opacity-80"
-        />
+      {/* Fullscreen remote video */}
+      <div className="absolute inset-0 flex items-center justify-center bg-black">
+        {remoteStream ? (
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            muted={false}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <UserAvatar
+            name={call.contact.name}
+            size="2xl"
+            isOnline={call.contact.isOnline}
+            className="opacity-80"
+          />
+        )}
       </div>
 
       {/* Overlay: name, status — spec 10.4 */}
@@ -94,6 +121,14 @@ export default function VideoCallScreen({
           <div className="w-full h-full flex items-center justify-center bg-muted">
             <UserAvatar name="Вы" size="lg" />
           </div>
+        ) : localStream ? (
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-full h-full object-cover"
+          />
         ) : (
           <div className="w-full h-full bg-primary/20 flex items-center justify-center">
             <span className="text-xs text-muted-foreground">Камера</span>

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { PhoneOff, Mic, MicOff, Volume2, VolumeX, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import UserAvatar from '@/components/common/Avatar';
@@ -13,6 +14,7 @@ function formatDuration(seconds: number): string {
 
 interface ActiveCallScreenProps {
   call: CallSession;
+  remoteStream?: MediaStream;
   durationSeconds: number;
   onEnd: () => void;
   onToggleMute: () => void;
@@ -22,12 +24,21 @@ interface ActiveCallScreenProps {
 
 export default function ActiveCallScreen({
   call,
+  remoteStream,
   durationSeconds,
   onEnd,
   onToggleMute,
   onToggleSpeaker,
   isGroup = false,
 }: ActiveCallScreenProps) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  useEffect(() => {
+    if (audioRef.current && remoteStream) {
+      audioRef.current.srcObject = remoteStream;
+    }
+  }, [remoteStream]);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -35,6 +46,7 @@ export default function ActiveCallScreen({
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-[200] flex flex-col bg-background"
     >
+      {remoteStream && <audio ref={audioRef} autoPlay playsInline />}
       <div className="flex-1 flex flex-col items-center justify-center px-6 pt-safe">
         <UserAvatar
           name={call.contact.name}

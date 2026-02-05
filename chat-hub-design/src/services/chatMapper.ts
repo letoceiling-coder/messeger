@@ -7,6 +7,8 @@ export interface ApiChat {
   name: string | null;
   lastMessageAt: string | null;
   pinnedMessageId: string | null;
+  isPinned?: boolean;
+  isArchived?: boolean;
   members: Array<{
     userId: string;
     user: {
@@ -80,9 +82,9 @@ export function mapApiChatToChat(api: ApiChat, currentUserId: string): Chat {
     avatar,
     isGroup,
     unreadCount: api.unreadCount ?? 0,
-    isPinned: false,
+    isPinned: api.isPinned ?? false,
     isMuted: false,
-    isArchived: false,
+    isArchived: api.isArchived ?? false,
     members: isGroup ? memberIds : undefined,
     isOnline,
     lastSeen,

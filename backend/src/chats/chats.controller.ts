@@ -110,6 +110,26 @@ export class ChatsController {
     return this.chatsService.unpinMessage(chatId, user.id);
   }
 
+  /** Закрепить чат в списке (pin to top) */
+  @Patch(':id/pin-chat')
+  async pinChat(
+    @Param('id') chatId: string,
+    @Body() body: { pinned: boolean },
+    @CurrentUser() user: User,
+  ) {
+    return this.chatsService.pinChat(chatId, user.id, body.pinned === true);
+  }
+
+  /** Архивировать чат */
+  @Patch(':id/archive')
+  async archiveChat(
+    @Param('id') chatId: string,
+    @Body() body: { archived: boolean },
+    @CurrentUser() user: User,
+  ) {
+    return this.chatsService.archiveChat(chatId, user.id, body.archived === true);
+  }
+
   @Patch(':id/members/:userId/role')
   async updateMemberRole(
     @Param('id') id: string,

@@ -5,12 +5,18 @@ import UserAvatar from '@/components/common/Avatar';
 import EmptyState from '@/components/common/EmptyState';
 import { calls, formatCallDuration } from '@/data/mockData';
 import { useCall } from '@/context/CallContext';
+import { useChats } from '@/context/ChatsContext';
 import { Call } from '@/types/messenger';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 const CallsPage = () => {
-  const { startOutgoingCall, setIncomingCall } = useCall();
+  const { startOutgoingCall } = useCall();
+  const { chats } = useChats();
+
+  const getChatIdByContactId = (contactId: string): string | undefined => {
+    return chats.find((c) => !c.isGroup && c.members?.includes(contactId))?.id;
+  };
 
   // Group calls by date
   const groupedCalls = useMemo(() => {
@@ -165,7 +171,7 @@ const CallsPage = () => {
                     variant="ghost"
                     size="icon"
                     className="text-primary shrink-0"
-                    onClick={() => startOutgoingCall(call.contact, call.type)}
+                    onClick={() => startOutgoingCall(call.contact, call.type, getChatIdByContactId(call.contactId))}
                   >
                     {call.type === 'video' ? (
                       <Video className="h-5 w-5" />

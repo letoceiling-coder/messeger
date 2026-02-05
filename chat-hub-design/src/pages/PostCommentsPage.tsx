@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useChatDraft } from '@/hooks/useChatDraft';
 import { useParams, useNavigate } from 'react-router-dom';
 import type { Message } from '@/types/messenger';
 import { Button } from '@/components/ui/button';
@@ -21,7 +22,7 @@ export default function PostCommentsPage() {
     if (senderId === currentUserId) return 'Вы';
     return getContactById(senderId)?.name ?? senderId;
   };
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue, clearDraft] = useChatDraft(chatId ?? undefined, post ? `post-${post.id}` : undefined);
   const [replyToComment, setReplyToComment] = useState<Message | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { getMessages, addMessageToChat, updateMessageReaction } = useMessages();
@@ -67,7 +68,7 @@ export default function PostCommentsPage() {
       isOutgoing: true,
       replyTo: parentId,
     });
-    setInputValue('');
+    clearDraft();
     setReplyToComment(null);
     textareaRef.current?.focus();
   };

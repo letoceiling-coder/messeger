@@ -5,6 +5,7 @@ import { api } from '@/services/api';
 import { uploadService } from '@/services/upload.service';
 import { mapApiMessageToMessage, type ApiMessage } from '@/services/messageMapper';
 import { MESSAGES_PAGE_SIZE } from '@/constants';
+import { toast } from '@/components/ui/sonner';
 
 interface MessagesContextValue {
   getMessages: (chatId: string) => Message[];
@@ -21,6 +22,10 @@ interface MessagesContextValue {
   sendMediaMessage: (chatId: string, file: File, caption?: string) => Promise<Message | null>;
   /** Файл/документ */
   sendDocumentMessage: (chatId: string, file: File, caption?: string) => Promise<Message | null>;
+  /** Опрос */
+  sendPollMessage: (chatId: string, question: string, options: string[]) => Promise<Message | null>;
+  /** Геолокация */
+  sendLocationMessage: (chatId: string, lat: number, lng: number) => Promise<Message | null>;
   /** Редактирование сообщения через API */
   editMessageContent: (chatId: string, messageId: string, content: string) => Promise<boolean>;
   /** Удаление на сервере и локально (у себя) */
@@ -28,14 +33,18 @@ interface MessagesContextValue {
   /** Удаление у всех участников */
   deleteForEveryone: (chatId: string, messageId: string) => Promise<boolean>;
   deleteMessage: (chatId: string, messageId: string) => void;
-  updateMessageReaction: (chatId: string, messageId: string, emoji: string, add: boolean) => void;
+  updateMessageReaction: (chatId: string, messageId: string, emoji: string, add: boolean) => Promise<void>;
+  /** Применить реакцию из WebSocket (reaction:updated) */
+  applyReactionFromWs: (chatId: string, messageId: string, emoji: string, action: 'added' | 'removed', userId: string) => void;
   incrementViews: (chatId: string, messageId: string) => void;
   loadMoreMessages: (chatId: string) => void;
   hasMoreOlder: (chatId: string) => boolean;
   /** Загрузить сообщения чата (вызывать при открытии чата) */
   loadMessagesForChat: (chatId: string) => Promise<void>;
   messagesLoading: Record<string, boolean>;
+  messagesErrorByChat: Record<string, string | null>;
   hasMoreByChat: Record<string, boolean>;
+  setMessageStatus: (chatId: string, messageId: string, status: Message['status']) => void;
 }
 
 const MessagesContext = createContext<MessagesContextValue | null>(null);
@@ -47,6 +56,7 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
   const [offsetByChat, setOffsetByChat] = useState<Record<string, number>>({});
   const [hasMoreByChat, setHasMoreByChat] = useState<Record<string, boolean>>({});
   const [messagesLoading, setMessagesLoading] = useState<Record<string, boolean>>({});
+  const [messagesErrorByChat, setMessagesErrorByChat] = useState<Record<string, string | null>>({});
 
   const getFullMessages = useCallback(
     (chatId: string): Message[] => messagesByChat[chatId] ?? [],
@@ -62,7 +72,10 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
     async (chatId: string, append = false) => {
       if (!currentUserId) return;
       const offset = append ? offsetByChat[chatId] ?? MESSAGES_PAGE_SIZE : 0;
-      if (!append) setMessagesLoading((prev) => ({ ...prev, [chatId]: true }));
+      if (!append) {
+        setMessagesLoading((prev) => ({ ...prev, [chatId]: true }));
+        setMessagesErrorByChat((prev) => ({ ...prev, [chatId]: null }));
+      }
       try {
         const data = await api.get<ApiMessage[]>(
           `/messages?chatId=${encodeURIComponent(chatId)}&limit=${MESSAGES_PAGE_SIZE}&offset=${offset}`
@@ -88,6 +101,9 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         } else {
           setOffsetByChat((prev) => ({ ...prev, [chatId]: MESSAGES_PAGE_SIZE }));
         }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Не удалось загрузить сообщения';
+        setMessagesErrorByChat((prev) => ({ ...prev, [chatId]: msg }));
       } finally {
         setMessagesLoading((prev) => ({ ...prev, [chatId]: false }));
       }
@@ -134,6 +150,7 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         addMessageToChat(chatId, msg);
         return msg;
       } catch {
+        toast.error('Не удалось отправить сообщение');
         return null;
       }
     },
@@ -152,6 +169,7 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         msg.duration = durationSec;
         return msg;
       } catch {
+        toast.error('Не удалось отправить голосовое сообщение');
         return null;
       }
     },
@@ -172,6 +190,7 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         msg.duration = durationSec;
         return msg;
       } catch {
+        toast.error('Не удалось отправить видеокружок');
         return null;
       }
     },
@@ -193,6 +212,7 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         addMessageToChat(chatId, msg);
         return msg;
       } catch {
+        toast.error('Не удалось отправить медиа');
         return null;
       }
     },
@@ -212,6 +232,47 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         addMessageToChat(chatId, msg);
         return msg;
       } catch {
+        toast.error('Не удалось отправить файл');
+        return null;
+      }
+    },
+    [currentUserId, addMessageToChat]
+  );
+
+  const sendPollMessage = useCallback(
+    async (chatId: string, question: string, options: string[]): Promise<Message | null> => {
+      if (!currentUserId || !question.trim() || options.length < 2) return null;
+      const content = JSON.stringify({
+        _type: 'poll',
+        question: question.trim(),
+        options: options.map((text, i) => ({ id: `opt-${i}`, text: text.trim(), votes: 0 })),
+      });
+      try {
+        const res = await api.post<ApiMessage>('/messages', { chatId, content });
+        const msg = mapApiMessageToMessage(res, currentUserId);
+        msg.type = 'poll';
+        addMessageToChat(chatId, msg);
+        return msg;
+      } catch {
+        toast.error('Не удалось отправить опрос');
+        return null;
+      }
+    },
+    [currentUserId, addMessageToChat]
+  );
+
+  const sendLocationMessage = useCallback(
+    async (chatId: string, lat: number, lng: number): Promise<Message | null> => {
+      if (!currentUserId) return null;
+      const content = JSON.stringify({ _type: 'location', lat, lng });
+      try {
+        const res = await api.post<ApiMessage>('/messages', { chatId, content });
+        const msg = mapApiMessageToMessage(res, currentUserId);
+        msg.type = 'location';
+        addMessageToChat(chatId, msg);
+        return msg;
+      } catch {
+        toast.error('Не удалось отправить геолокацию');
         return null;
       }
     },
@@ -231,6 +292,7 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         );
         return true;
       } catch {
+        toast.error('Не удалось отредактировать сообщение');
         return false;
       }
     },
@@ -244,6 +306,7 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         setMessagesForChat(chatId, (prev) => prev.filter((m) => m.id !== messageId));
         return true;
       } catch {
+        toast.error('Не удалось удалить сообщение');
         return false;
       }
     },
@@ -257,6 +320,7 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         setMessagesForChat(chatId, (prev) => prev.filter((m) => m.id !== messageId));
         return true;
       } catch {
+        toast.error('Не удалось удалить сообщение у всех');
         return false;
       }
     },
@@ -270,49 +334,74 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
     [setMessagesForChat]
   );
 
-  const updateMessageReaction = useCallback(
-    (chatId: string, messageId: string, emoji: string, add: boolean) => {
-      setMessagesForChat(chatId, (prev) =>
-        prev.map((m) => {
-          if (m.id !== messageId) return m;
-          let reactions: MessageReaction[] = [...(m.reactions ?? [])];
-          if (add) {
-            reactions = reactions
-              .map((r) => {
-                const hadUser = (r.userIds ?? []).includes(currentUserId);
-                const nextUserIds = (r.userIds ?? []).filter((id) => id !== currentUserId);
-                const nextCount = hadUser ? r.count - 1 : r.count;
-                return { ...r, userIds: nextUserIds, count: nextCount };
-              })
-              .filter((r) => r.count > 0);
-            const r = reactions.find((x) => x.emoji === emoji);
-            if (!r) {
-              reactions = [...reactions, { emoji, count: 1, userIds: [currentUserId] }];
-            } else {
-              reactions = reactions.map((x) =>
-                x.emoji === emoji
-                  ? { ...x, count: x.count + 1, userIds: [...(x.userIds ?? []), currentUserId] }
-                  : x
-              );
-            }
+  const applyReactionToMessage = useCallback(
+    (
+      prev: Message[],
+      messageId: string,
+      emoji: string,
+      action: 'added' | 'removed',
+      userId: string
+    ): Message[] =>
+      prev.map((m) => {
+        if (m.id !== messageId) return m;
+        let reactions: MessageReaction[] = [...(m.reactions ?? [])];
+        if (action === 'added') {
+          reactions = reactions
+            .map((r) => {
+              const hadUser = (r.userIds ?? []).includes(userId);
+              const nextUserIds = (r.userIds ?? []).filter((id) => id !== userId);
+              const nextCount = hadUser ? r.count - 1 : r.count;
+              return { ...r, userIds: nextUserIds, count: nextCount };
+            })
+            .filter((r) => r.count > 0);
+          const r = reactions.find((x) => x.emoji === emoji);
+          if (!r) {
+            reactions = [...reactions, { emoji, count: 1, userIds: [userId] }];
           } else {
-            const r = reactions.find((x) => x.emoji === emoji);
-            if (!r || !(r.userIds ?? []).includes(currentUserId)) return m;
-            const nextUserIds = (r.userIds ?? []).filter((id) => id !== currentUserId);
-            const nextCount = r.count - 1;
-            if (nextCount <= 0) {
-              reactions = reactions.filter((x) => x.emoji !== emoji);
-            } else {
-              reactions = reactions.map((x) =>
-                x.emoji === emoji ? { ...x, count: nextCount, userIds: nextUserIds } : x
-              );
-            }
+            reactions = reactions.map((x) =>
+              x.emoji === emoji ? { ...x, count: x.count + 1, userIds: [...(x.userIds ?? []), userId] } : x
+            );
           }
-          return { ...m, reactions };
-        })
-      );
+        } else {
+          const r = reactions.find((x) => x.emoji === emoji);
+          if (!r || !(r.userIds ?? []).includes(userId)) return m;
+          const nextUserIds = (r.userIds ?? []).filter((id) => id !== userId);
+          const nextCount = r.count - 1;
+          if (nextCount <= 0) {
+            reactions = reactions.filter((x) => x.emoji !== emoji);
+          } else {
+            reactions = reactions.map((x) =>
+              x.emoji === emoji ? { ...x, count: nextCount, userIds: nextUserIds } : x
+            );
+          }
+        }
+        return { ...m, reactions };
+      }),
+    []
+  );
+
+  const applyReactionFromWs = useCallback(
+    (chatId: string, messageId: string, emoji: string, action: 'added' | 'removed', userId: string) => {
+      setMessagesForChat(chatId, (prev) => applyReactionToMessage(prev, messageId, emoji, action, userId));
     },
-    [setMessagesForChat, currentUserId]
+    [setMessagesForChat, applyReactionToMessage]
+  );
+
+  const updateMessageReaction = useCallback(
+    async (chatId: string, messageId: string, emoji: string, add: boolean) => {
+      setMessagesForChat(chatId, (prev) =>
+        applyReactionToMessage(prev, messageId, emoji, add ? 'added' : 'removed', currentUserId)
+      );
+      try {
+        await api.post<{ action: string }>(`/messages/${messageId}/reactions`, { emoji });
+      } catch {
+        setMessagesForChat(chatId, (prev) =>
+          applyReactionToMessage(prev, messageId, emoji, add ? 'removed' : 'added', currentUserId)
+        );
+        toast.error('Не удалось обновить реакцию');
+      }
+    },
+    [setMessagesForChat, applyReactionToMessage, currentUserId]
   );
 
   const incrementViews = useCallback(
@@ -322,6 +411,20 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
           m.id === messageId ? { ...m, views: (m.views ?? 0) + 1 } : m
         )
       );
+    },
+    [setMessagesForChat]
+  );
+
+  const setMessageStatus = useCallback(
+    (chatId: string, messageId: string, status: Message['status']) => {
+      setMessagesForChat(chatId, (prev) => {
+        const idx = prev.findIndex((m) => m.id === messageId);
+        if (idx < 0) return prev;
+        if (prev[idx].status === status) return prev;
+        const next = [...prev];
+        next[idx] = { ...next[idx], status };
+        return next;
+      });
     },
     [setMessagesForChat]
   );
@@ -336,17 +439,22 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
     sendVideoNoteMessage,
     sendMediaMessage,
     sendDocumentMessage,
+    sendPollMessage,
+    sendLocationMessage,
     editMessageContent,
     deleteMessageFromServer,
     deleteForEveryone,
     deleteMessage,
     updateMessageReaction,
+    applyReactionFromWs,
     incrementViews,
     loadMoreMessages,
     hasMoreOlder,
     loadMessagesForChat,
     messagesLoading,
+    messagesErrorByChat,
     hasMoreByChat,
+    setMessageStatus,
   };
 
   return <MessagesContext.Provider value={value}>{children}</MessagesContext.Provider>;

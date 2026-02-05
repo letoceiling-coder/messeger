@@ -16,6 +16,7 @@ import {
   LogOut,
   HelpCircle,
   Type,
+  Volume2,
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import UserAvatar from '@/components/common/Avatar';
@@ -87,18 +88,45 @@ const applyFontSize = (size: 'small' | 'medium' | 'large') => {
   document.documentElement.style.fontSize = `${16 * scale}px`;
 };
 
+const SETTINGS_STORAGE_KEY = 'messenger-settings';
+
+function loadSettings(): Settings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<Settings>;
+      return { ...defaultSettings, ...parsed };
+    }
+  } catch {
+    /* ignore */
+  }
+  return defaultSettings;
+}
+
+function saveSettings(s: Settings) {
+  try {
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(s));
+  } catch {
+    /* ignore */
+  }
+}
+
 const SettingsPage = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const displayName = user?.username || user?.phone || user?.email || 'Пользователь';
   const { theme, setTheme } = useTheme();
-  const [settings, setSettings] = useState<Settings>(defaultSettings);
+  const [settings, setSettings] = useState<Settings>(loadSettings);
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
 
   useEffect(() => {
     applyFontSize(settings.fontSize);
   }, [settings.fontSize]);
+
+  useEffect(() => {
+    saveSettings(settings);
+  }, [settings]);
 
   const handleThemeChange = (value: string) => {
     const v = value as 'light' | 'dark' | 'system';
@@ -159,8 +187,32 @@ const SettingsPage = () => {
           <SettingItem
             icon={<Bell className="h-5 w-5 text-white" />}
             iconBg="bg-red-500"
-            label="Уведомления"
+            label="Уведомления о сообщениях"
             value={<Switch checked={settings.notifications} onCheckedChange={toggleNotifications} />}
+          />
+          <div className="border-t border-border" />
+          <SettingItem
+            icon={<Volume2 className="h-5 w-5 text-white" />}
+            iconBg="bg-amber-500"
+            label="Звуки"
+            value={
+              <Switch
+                checked={settings.sounds}
+                onCheckedChange={() => setSettings((s) => ({ ...s, sounds: !s.sounds }))}
+              />
+            }
+          />
+          <div className="border-t border-border" />
+          <SettingItem
+            icon={<Smartphone className="h-5 w-5 text-white" />}
+            iconBg="bg-orange-500/80"
+            label="Вибрация"
+            value={
+              <Switch
+                checked={settings.vibration}
+                onCheckedChange={() => setSettings((s) => ({ ...s, vibration: !s.vibration }))}
+              />
+            }
           />
         </div>
 

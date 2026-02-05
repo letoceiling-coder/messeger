@@ -5,6 +5,7 @@ export interface WebSocketContextValue {
   emitTypingStop: (chatId: string) => void;
   emitMessageDelivered: (messageId: string) => void;
   emitMessageRead: (messageId: string) => void;
+  emitChatJoin: (chatId: string) => void;
 }
 
 const NOOP_WS: WebSocketContextValue = {
@@ -12,6 +13,7 @@ const NOOP_WS: WebSocketContextValue = {
   emitTypingStop: () => {},
   emitMessageDelivered: () => {},
   emitMessageRead: () => {},
+  emitChatJoin: () => {},
 };
 export const WebSocketContext = createContext<WebSocketContextValue>(NOOP_WS);
 

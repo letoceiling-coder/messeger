@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getDraftForChat } from '@/hooks/useChatDraft';
 
 const ACTIONS_WIDTH = 4 * 56; // 4 кнопки по 56px
 const SWIPE_THRESHOLD = 60;
@@ -81,7 +82,17 @@ const ChatListItem = ({
     [chat.id, onRevealChange]
   );
 
+  const draftPreview = getDraftForChat(chat.id);
+
   const getMessagePreview = () => {
+    if (draftPreview) {
+      const text = draftPreview.length > 40 ? draftPreview.slice(0, 40) + '…' : draftPreview;
+      return (
+        <span className="text-muted-foreground">
+          Черновик: <span className="text-foreground/90">{text}</span>
+        </span>
+      );
+    }
     const { lastMessage } = chat;
     if (!lastMessage) return '';
 

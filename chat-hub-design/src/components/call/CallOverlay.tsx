@@ -9,6 +9,8 @@ import CallNetworkOverlay from './CallNetworkOverlay';
 export default function CallOverlay() {
   const {
     activeCall,
+    localStream,
+    remoteStream,
     endCall,
     acceptCall,
     declineCall,
@@ -57,6 +59,7 @@ export default function CallOverlay() {
           <ActiveCallScreen
             key="active-audio"
             call={activeCall}
+            remoteStream={remoteStream ?? undefined}
             durationSeconds={callDurationSeconds}
             onEnd={endCall}
             onToggleMute={toggleMute}
@@ -67,6 +70,8 @@ export default function CallOverlay() {
           <VideoCallScreen
             key="video"
             call={activeCall}
+            localStream={localStream ?? undefined}
+            remoteStream={remoteStream ?? undefined}
             durationSeconds={callDurationSeconds}
             onEnd={endCall}
             onToggleMute={toggleMute}

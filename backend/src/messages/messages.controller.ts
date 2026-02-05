@@ -417,13 +417,16 @@ export class MessagesController {
   ) {
     const result = await this.messagesService.toggleReaction(id, user.id, dto.emoji);
     
-    // Отправить событие через WebSocket
-    this.wsGateway.server.emit('reaction:updated', {
-      messageId: id,
-      emoji: dto.emoji,
-      action: result.action,
-      userId: user.id,
-    });
+    // Отправить событие через WebSocket (chatId для обновления на клиенте)
+    if (result.chatId) {
+      this.wsGateway.server.emit('reaction:updated', {
+        messageId: id,
+        chatId: result.chatId,
+        emoji: dto.emoji,
+        action: result.action,
+        userId: user.id,
+      });
+    }
     
     return result;
   }

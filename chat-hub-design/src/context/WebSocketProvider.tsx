@@ -36,8 +36,8 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const currentChatId = /^\/chat\/([^/]+)/.exec(location.pathname)?.[1] ?? null;
   const { user } = useAuth();
-  const { onNewMessage } = useChats();
-  const { addMessageToChat, setMessagesForChat, setMessageStatus } = useMessages();
+  const { onNewMessage, updateChat } = useChats();
+  const { addMessageToChat, setMessagesForChat, setMessageStatus, applyReactionFromWs } = useMessages();
   const currentUserId = user?.id ?? '';
 
   const emitTypingStart = useCallback((chatId: string) => {
@@ -58,6 +58,11 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const emitMessageRead = useCallback((messageId: string) => {
     const s = getSocket(localStorage.getItem('accessToken'));
     if (s?.connected) s.emit('message:read', { messageId });
+  }, []);
+
+  const emitChatJoin = useCallback((chatId: string) => {
+    const s = getSocket(localStorage.getItem('accessToken'));
+    if (s?.connected) s.emit('chat:join', { chatId });
   }, []);
 
   useEffect(() => {
@@ -105,24 +110,58 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       });
     };
 
+    const typingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+    const onTypingStart = (data: { chatId: string; userId: string }) => {
+      if (!data.chatId || data.userId === currentUserId) return;
+      updateChat(data.chatId, { isTyping: true });
+      if (typingTimeouts.has(data.chatId)) clearTimeout(typingTimeouts.get(data.chatId)!);
+      typingTimeouts.set(
+        data.chatId,
+        setTimeout(() => {
+          updateChat(data.chatId, { isTyping: false });
+          typingTimeouts.delete(data.chatId);
+        }, 5000)
+      );
+    };
+    const onTypingStop = (data: { chatId: string; userId: string }) => {
+      if (!data.chatId || data.userId === currentUserId) return;
+      if (typingTimeouts.has(data.chatId)) {
+        clearTimeout(typingTimeouts.get(data.chatId)!);
+        typingTimeouts.delete(data.chatId);
+      }
+      updateChat(data.chatId, { isTyping: false });
+    };
+
     s.on('message:received', onMessage);
     s.on('message:deleted', (data: { messageId: string; chatId: string }) => onDeleted(data));
     s.on('message:edited', onEdited);
     s.on('message:delivery_status', onDeliveryStatus);
+    s.on('typing:start', onTypingStart);
+    s.on('typing:stop', onTypingStop);
+
+    const onReactionUpdated = (data: { messageId: string; chatId?: string; emoji: string; action: 'added' | 'removed'; userId: string }) => {
+      if (!data.chatId || !data.messageId || !data.emoji || !data.action) return;
+      applyReactionFromWs(data.chatId, data.messageId, data.emoji, data.action, data.userId);
+    };
+    s.on('reaction:updated', onReactionUpdated);
 
     return () => {
       s.off('message:received', onMessage);
       s.off('message:deleted');
       s.off('message:edited');
       s.off('message:delivery_status', onDeliveryStatus);
+      s.off('typing:start', onTypingStart);
+      s.off('typing:stop', onTypingStop);
+      s.off('reaction:updated', onReactionUpdated);
+      typingTimeouts.forEach((t) => clearTimeout(t));
     };
-  }, [currentUserId, currentChatId, addMessageToChat, setMessagesForChat, setMessageStatus, emitMessageDelivered, onNewMessage]);
+  }, [currentUserId, currentChatId, addMessageToChat, setMessagesForChat, setMessageStatus, emitMessageDelivered, onNewMessage, updateChat, applyReactionFromWs]);
 
   useEffect(() => {
     return () => disconnectSocket();
   }, []);
 
-  const value = { emitTypingStart, emitTypingStop, emitMessageDelivered, emitMessageRead };
+  const value = { emitTypingStart, emitTypingStop, emitMessageDelivered, emitMessageRead, emitChatJoin };
 
   return (
     <WebSocketContext.Provider value={value}>

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useChatDraft } from '@/hooks/useChatDraft';
 import type { Message } from '@/types/messenger';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -28,7 +29,7 @@ export default function CommentsSheet({
 }: CommentsSheetProps) {
   const { user } = useAuth();
   const currentUserId = user?.id ?? '';
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue, clearDraft] = useChatDraft(chatId, `post-${post.id}`);
   const [replyToComment, setReplyToComment] = useState<Message | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { getMessages, addMessageToChat, deleteMessage, updateMessageReaction } = useMessages();
@@ -56,7 +57,6 @@ export default function CommentsSheet({
 
   useEffect(() => {
     if (open) {
-      setInputValue('');
       setReplyToComment(null);
     }
   }, [open]);
@@ -76,7 +76,7 @@ export default function CommentsSheet({
       isOutgoing: true,
       replyTo: parentId,
     });
-    setInputValue('');
+    clearDraft();
     setReplyToComment(null);
     textareaRef.current?.focus();
   };

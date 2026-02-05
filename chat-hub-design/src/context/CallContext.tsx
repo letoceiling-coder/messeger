@@ -1,10 +1,17 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { Contact } from '@/types/messenger';
 import type { CallSession, CallType, CallSessionState, CallNetworkState } from '@/types/messenger';
+import { getSocket } from '@/services/websocket';
+import { WebRTCService } from '@/services/webrtc.service';
+import { toast } from '@/components/ui/sonner';
+import { useChats } from '@/context/ChatsContext';
+import { useContacts } from '@/context/ContactsContext';
 
 interface CallContextValue {
   activeCall: CallSession | null;
-  startOutgoingCall: (contact: Contact, type: CallType) => void;
+  localStream: MediaStream | null;
+  remoteStream: MediaStream | null;
+  startOutgoingCall: (contact: Contact, type: CallType, chatId?: string) => void;
   setIncomingCall: (contact: Contact, type: CallType) => void;
   acceptCall: () => void;
   declineCall: () => void;
@@ -21,9 +28,16 @@ interface CallContextValue {
 const CallContext = createContext<CallContextValue | null>(null);
 
 export function CallProvider({ children }: { children: React.ReactNode }) {
+  const { getChatById } = useChats();
+  const { getContactById } = useContacts();
   const [activeCall, setActiveCall] = useState<CallSession | null>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [callDurationSeconds, setCallDurationSeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const webrtcRef = useRef<WebRTCService | null>(null);
+  const pendingOfferRef = useRef<{ chatId: string; offer: RTCSessionDescriptionInit; videoMode: boolean } | null>(null);
+  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -31,6 +45,18 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       timerRef.current = null;
     }
     setCallDurationSeconds(0);
+  }, []);
+
+  const cleanupCall = useCallback(() => {
+    webrtcRef.current?.endCall();
+    webrtcRef.current = null;
+    setLocalStream(null);
+    setRemoteStream(null);
+    pendingOfferRef.current = null;
+    if (connectTimeoutRef.current) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
@@ -45,13 +71,74 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     return clearTimer;
   }, [activeCall?.id, activeCall?.state, activeCall?.startTime, clearTimer]);
 
-  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeCallRef = useRef(activeCall);
+  activeCallRef.current = activeCall;
 
-  const startOutgoingCall = useCallback((contact: Contact, type: CallType) => {
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken');
+    const socket = getSocket(token);
+    if (!socket?.connected) return;
+
+    const onOffer = (data: { chatId?: string; offer?: RTCSessionDescriptionInit; callerId?: string; videoMode?: boolean }) => {
+      if (!data?.chatId || !data?.offer || activeCallRef.current) return;
+      pendingOfferRef.current = {
+        chatId: data.chatId,
+        offer: data.offer,
+        videoMode: data.videoMode !== false,
+      };
+      const chat = getChatById?.(data.chatId ?? '');
+      const callerContact = data.callerId ? getContactById?.(data.callerId) : null;
+      const contact: Contact = {
+        id: data.callerId ?? 'unknown',
+        name: callerContact?.name ?? chat?.name ?? 'Собеседник',
+        isOnline: true,
+      };
+      setActiveCall({
+        id: `in-${Date.now()}`,
+        direction: 'incoming',
+        type: data.videoMode !== false ? 'video' : 'audio',
+        contact,
+        state: 'ringing',
+        networkState: 'good',
+        startTime: null,
+        muted: false,
+        speaker: false,
+        cameraOff: false,
+        frontCamera: true,
+      });
+    };
+
+    const onCallEnd = (data: { chatId?: string }) => {
+      const call = activeCallRef.current;
+      if (!call) return;
+      const pending = pendingOfferRef.current;
+      const matchChat = data.chatId && (data.chatId === pending?.chatId || call.direction === 'incoming');
+      if (matchChat) {
+        pendingOfferRef.current = null;
+        cleanupCall();
+        setActiveCall(null);
+        clearTimer();
+        if (call.state === 'ringing') toast.info('Звонок отменён');
+      }
+    };
+
+    socket.on('call:offer', onOffer);
+    socket.on('call:end', onCallEnd);
+    socket.on('call:rejected', onCallEnd);
+    return () => {
+      socket.off('call:offer', onOffer);
+      socket.off('call:end', onCallEnd);
+      socket.off('call:rejected', onCallEnd);
+    };
+  }, [getChatById, getContactById, cleanupCall, clearTimer]);
+
+  const startOutgoingCall = useCallback((contact: Contact, type: CallType, chatId?: string) => {
     if (connectTimeoutRef.current) {
       clearTimeout(connectTimeoutRef.current);
       connectTimeoutRef.current = null;
     }
+    cleanupCall();
+
     setActiveCall({
       id: `out-${Date.now()}`,
       direction: 'outgoing',
@@ -65,6 +152,58 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       cameraOff: false,
       frontCamera: true,
     });
+
+    if (chatId) {
+      const socket = getSocket(localStorage.getItem('accessToken'));
+      if (socket?.connected) {
+        const webrtc = new WebRTCService(socket);
+        webrtcRef.current = webrtc;
+
+        webrtc.onRemoteStream((stream) => {
+          setRemoteStream(stream);
+          setActiveCall((prev) => prev && prev.direction === 'outgoing'
+            ? { ...prev, state: 'connected', startTime: Date.now() }
+            : prev);
+        });
+        webrtc.onCallEnd(() => {
+          cleanupCall();
+          setActiveCall(null);
+          clearTimer();
+        });
+        webrtc.onConnectionFailed(() => {
+          toast.error('Не удалось установить соединение');
+          cleanupCall();
+          setActiveCall(null);
+        });
+        webrtc.onNoAnswer(() => {
+          toast.error('Собеседник не ответил');
+          cleanupCall();
+          setActiveCall(null);
+        });
+        webrtc.onCallBusy(() => {
+          toast.error('Пользователь занят');
+          cleanupCall();
+          setActiveCall(null);
+        });
+        webrtc.onCallError((msg) => {
+          toast.error(msg);
+          cleanupCall();
+          setActiveCall(null);
+        });
+
+        webrtc.initiateCall(chatId, { video: type === 'video' })
+          .then((stream) => {
+            setLocalStream(stream);
+          })
+          .catch((err) => {
+            toast.error(err?.message ?? 'Ошибка запуска звонка');
+            cleanupCall();
+            setActiveCall(null);
+          });
+        return;
+      }
+    }
+
     connectTimeoutRef.current = setTimeout(() => {
       connectTimeoutRef.current = null;
       setActiveCall((prev) =>
@@ -73,7 +212,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           : prev
       );
     }, 2000);
-  }, []);
+  }, [cleanupCall, clearTimer]);
 
   const setIncomingCall = useCallback((contact: Contact, type: CallType) => {
     setActiveCall({
@@ -91,27 +230,66 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const acceptCall = useCallback(() => {
-    setActiveCall((prev) =>
-      prev
-        ? { ...prev, state: 'connected', startTime: Date.now() }
-        : null
-    );
-  }, []);
+  const acceptCall = useCallback(async () => {
+    const pending = pendingOfferRef.current;
+    const call = activeCall;
+    if (!call) return;
+
+    if (pending && call.direction === 'incoming') {
+      const socket = getSocket(localStorage.getItem('accessToken'));
+      if (!socket?.connected) return;
+
+      const webrtc = new WebRTCService(socket);
+      webrtcRef.current = webrtc;
+      pendingOfferRef.current = null;
+
+      webrtc.onRemoteStream((stream) => {
+        setRemoteStream(stream);
+        setActiveCall((prev) => prev ? { ...prev, state: 'connected', startTime: Date.now() } : null);
+      });
+      webrtc.onCallEnd(() => {
+        cleanupCall();
+        setActiveCall(null);
+        clearTimer();
+      });
+      webrtc.onConnectionFailed(() => {
+        toast.error('Не удалось установить соединение');
+        cleanupCall();
+        setActiveCall(null);
+      });
+
+      try {
+        const stream = await webrtc.handleOffer(pending.chatId, pending.offer, { video: pending.videoMode });
+        setLocalStream(stream);
+        setActiveCall((prev) => prev ? { ...prev, state: 'connected', startTime: Date.now() } : null);
+      } catch (err) {
+        toast.error((err as Error)?.message ?? 'Ошибка при принятии звонка');
+        cleanupCall();
+        setActiveCall(null);
+      }
+    } else {
+      setActiveCall((prev) => prev ? { ...prev, state: 'connected', startTime: Date.now() } : null);
+    }
+  }, [activeCall, cleanupCall, clearTimer]);
 
   const declineCall = useCallback(() => {
+    const pending = pendingOfferRef.current;
+    if (pending) {
+      const webrtc = webrtcRef.current;
+      if (webrtc) webrtc.rejectCall(pending.chatId);
+      else getSocket(localStorage.getItem('accessToken'))?.emit('call:reject', { chatId: pending.chatId });
+      pendingOfferRef.current = null;
+    }
+    cleanupCall();
     setActiveCall(null);
     clearTimer();
-  }, [clearTimer]);
+  }, [cleanupCall, clearTimer]);
 
   const endCall = useCallback(() => {
-    if (connectTimeoutRef.current) {
-      clearTimeout(connectTimeoutRef.current);
-      connectTimeoutRef.current = null;
-    }
+    cleanupCall();
     setActiveCall(null);
     clearTimer();
-  }, [clearTimer]);
+  }, [cleanupCall, clearTimer]);
 
   const setCallState = useCallback((state: CallSessionState) => {
     setActiveCall((prev) => (prev ? { ...prev, state } : null));
@@ -123,6 +301,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toggleMute = useCallback(() => {
+    webrtcRef.current?.toggleAudio();
     setActiveCall((prev) => (prev ? { ...prev, muted: !prev.muted } : null));
   }, []);
 
@@ -131,6 +310,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toggleCamera = useCallback(() => {
+    webrtcRef.current?.toggleVideo();
     setActiveCall((prev) => (prev ? { ...prev, cameraOff: !prev.cameraOff } : null));
   }, []);
 
@@ -140,6 +320,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
   const value: CallContextValue = {
     activeCall,
+    localStream,
+    remoteStream,
     startOutgoingCall,
     setIncomingCall,
     acceptCall,

@@ -415,13 +415,46 @@ export class ChatsService {
             fileSize: lastMsg.fileSize,
           }
         : null;
+      const myMember = chat.members.find((m) => m.userId === userId);
       const { messages, ...rest } = chat;
       return {
         ...rest,
         lastMessage,
         unreadCount: unreadByChat[chat.id] ?? 0,
+        isPinned: myMember?.isPinned ?? false,
+        isArchived: myMember?.isArchived ?? false,
       };
     });
+  }
+
+  /** Закрепить чат в списке (pin to top) */
+  async pinChat(chatId: string, userId: string, pinned: boolean) {
+    const member = await this.prisma.chatMember.findFirst({
+      where: { chatId, userId, leftAt: null },
+    });
+    if (!member) {
+      throw new BadRequestException('Вы не являетесь участником этого чата');
+    }
+    await this.prisma.chatMember.update({
+      where: { id: member.id },
+      data: { isPinned: pinned },
+    });
+    return { success: true };
+  }
+
+  /** Архивировать чат */
+  async archiveChat(chatId: string, userId: string, archived: boolean) {
+    const member = await this.prisma.chatMember.findFirst({
+      where: { chatId, userId, leftAt: null },
+    });
+    if (!member) {
+      throw new BadRequestException('Вы не являетесь участником этого чата');
+    }
+    await this.prisma.chatMember.update({
+      where: { id: member.id },
+      data: { isArchived: archived },
+    });
+    return { success: true };
   }
 
   async getChat(chatId: string, userId: string) {

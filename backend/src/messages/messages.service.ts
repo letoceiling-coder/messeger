@@ -321,7 +321,10 @@ export class MessagesService {
         },
       },
       messageDeliveries: {
-        select: { status: true, deliveredAt: true, readAt: true },
+        select: { userId: true, status: true, deliveredAt: true, readAt: true },
+      },
+      reactions: {
+        select: { emoji: true, userId: true },
       },
     };
 
@@ -650,7 +653,7 @@ export class MessagesService {
       await this.prisma.messageReaction.delete({
         where: { id: existingReaction.id },
       });
-      return { action: 'removed', emoji };
+      return { action: 'removed', emoji, chatId: message.chatId };
     } else {
       // Добавляем реакцию
       await this.prisma.messageReaction.create({
@@ -660,7 +663,7 @@ export class MessagesService {
           emoji,
         },
       });
-      return { action: 'added', emoji };
+      return { action: 'added', emoji, chatId: message.chatId };
     }
   }
 

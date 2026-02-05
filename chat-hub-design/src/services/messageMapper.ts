@@ -1,4 +1,4 @@
-import type { Message } from '@/types/messenger';
+import type { Message, MessageReaction } from '@/types/messenger';
 
 /** Ответ API GET /messages — один элемент массива */
 export interface ApiMessage {
@@ -15,7 +15,8 @@ export interface ApiMessage {
   isEdited?: boolean;
   createdAt: string;
   user?: { id: string; username?: string };
-  messageDeliveries?: Array<{ status: string; readAt?: string | null }>;
+  messageDeliveries?: Array<{ userId?: string; status: string; readAt?: string | null }>;
+  reactions?: Array<{ emoji: string; userId: string }>;
 }
 
 /** Парсит длительность голосового из content "Голосовое сообщение (12с)" */
@@ -27,7 +28,10 @@ function parseVoiceDuration(content: string): number | undefined {
 export function mapApiMessageToMessage(api: ApiMessage, currentUserId: string): Message {
   const ts = typeof api.createdAt === 'string' ? new Date(api.createdAt) : api.createdAt;
   const isOutgoing = api.userId === currentUserId;
-  const delivery = api.messageDeliveries?.[0];
+  // Для исходящих — статус берём из доставки получателю; для входящих — всегда sent
+  const delivery = isOutgoing && api.messageDeliveries?.length
+    ? api.messageDeliveries.find((d) => d.userId !== currentUserId) ?? api.messageDeliveries[0]
+    : api.messageDeliveries?.[0];
   const status = (delivery?.status as Message['status']) || 'sent';
   const type = (api.messageType as Message['type']) || 'text';
 
@@ -50,6 +54,20 @@ export function mapApiMessageToMessage(api: ApiMessage, currentUserId: string): 
   if (type === 'voice') {
     msg.mediaUrl = api.audioUrl ?? undefined;
     msg.duration = parseVoiceDuration(api.content ?? '');
+  }
+
+  if (api.reactions?.length) {
+    const byEmoji = new Map<string, MessageReaction>();
+    for (const r of api.reactions) {
+      const existing = byEmoji.get(r.emoji);
+      if (!existing) {
+        byEmoji.set(r.emoji, { emoji: r.emoji, count: 1, userIds: [r.userId] });
+      } else {
+        existing.count++;
+        existing.userIds = [...(existing.userIds ?? []), r.userId];
+      }
+    }
+    msg.reactions = Array.from(byEmoji.values());
   }
 
   return msg;

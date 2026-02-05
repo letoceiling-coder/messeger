@@ -3,6 +3,7 @@ import {
   MessageCircle,
   Phone,
   Users,
+  UsersRound,
   Settings,
   UserPlus,
   HelpCircle,
@@ -24,7 +25,8 @@ interface SideMenuProps {
 }
 
 const items: { path?: string; icon: typeof MessageCircle; label: string; action?: string }[] = [
-  { path: '/', icon: MessageCircle, label: 'Избранные сообщения' },
+  { path: '/', icon: MessageCircle, label: 'Чаты' },
+  { path: '/group/create', icon: UsersRound, label: 'Новая группа' },
   { path: '/calls', icon: Phone, label: 'Звонки' },
   { path: '/contacts', icon: Users, label: 'Контакты' },
   { path: '/settings', icon: Settings, label: 'Настройки' },

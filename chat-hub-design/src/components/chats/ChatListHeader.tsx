@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Edit, X } from 'lucide-react';
+import { Search, Edit, X, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import UserAvatar from '@/components/common/Avatar';
@@ -11,9 +11,10 @@ import { useNavigate } from 'react-router-dom';
 interface ChatListHeaderProps {
   onSearch: (query: string) => void;
   searchQuery: string;
+  onMenuClick?: () => void;
 }
 
-const ChatListHeader = ({ onSearch, searchQuery }: ChatListHeaderProps) => {
+const ChatListHeader = ({ onSearch, searchQuery, onMenuClick }: ChatListHeaderProps) => {
   const { user } = useAuth();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const navigate = useNavigate();
@@ -95,6 +96,17 @@ const ChatListHeader = ({ onSearch, searchQuery }: ChatListHeaderProps) => {
             >
               <Search className="h-5 w-5" />
             </Button>
+            {onMenuClick && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onMenuClick}
+                className="text-white/80 hover:text-white hover:bg-white/10"
+                aria-label="Меню"
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+            )}
             <motion.div
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
