@@ -32,7 +32,7 @@ function payloadToMessage(p: MessageReceivedPayload, currentUserId: string): Mes
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const { addMessageToChat, setMessagesForChat } = useMessages();
+  const { addMessageToChat, setMessagesForChat, setMessageStatus } = useMessages();
   const currentUserId = user?.id ?? '';
 
   const emitTypingStart = useCallback((chatId: string) => {
@@ -43,6 +43,16 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const emitTypingStop = useCallback((chatId: string) => {
     const s = getSocket(localStorage.getItem('accessToken'));
     if (s?.connected) s.emit('typing:stop', { chatId });
+  }, []);
+
+  const emitMessageDelivered = useCallback((messageId: string) => {
+    const s = getSocket(localStorage.getItem('accessToken'));
+    if (s?.connected) s.emit('message:delivered', { messageId });
+  }, []);
+
+  const emitMessageRead = useCallback((messageId: string) => {
+    const s = getSocket(localStorage.getItem('accessToken'));
+    if (s?.connected) s.emit('message:read', { messageId });
   }, []);
 
   useEffect(() => {
@@ -58,6 +68,15 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     const onMessage = (p: MessageReceivedPayload) => {
       const msg = payloadToMessage(p, currentUserId);
       addMessageToChat(p.chatId, msg);
+      if (!msg.isOutgoing) {
+        emitMessageDelivered(p.id);
+      }
+    };
+
+    const onDeliveryStatus = (data: { messageId: string; chatId: string; status: 'delivered' | 'read' }) => {
+      if (data.chatId && data.messageId && data.status) {
+        setMessageStatus(data.chatId, data.messageId, data.status);
+      }
     };
 
     const onDeleted = (data: { messageId: string; chatId: string }) => {
@@ -82,19 +101,21 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     s.on('message:received', onMessage);
     s.on('message:deleted', (data: { messageId: string; chatId: string }) => onDeleted(data));
     s.on('message:edited', onEdited);
+    s.on('message:delivery_status', onDeliveryStatus);
 
     return () => {
       s.off('message:received', onMessage);
       s.off('message:deleted');
       s.off('message:edited');
+      s.off('message:delivery_status', onDeliveryStatus);
     };
-  }, [currentUserId, addMessageToChat, setMessagesForChat]);
+  }, [currentUserId, addMessageToChat, setMessagesForChat, setMessageStatus, emitMessageDelivered]);
 
   useEffect(() => {
     return () => disconnectSocket();
   }, []);
 
-  const value = { emitTypingStart, emitTypingStop };
+  const value = { emitTypingStart, emitTypingStop, emitMessageDelivered, emitMessageRead };
 
   return (
     <WebSocketContext.Provider value={value}>

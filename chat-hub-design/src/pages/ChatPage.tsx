@@ -91,7 +91,7 @@ const ChatPage = () => {
   } = useVideoNoteRecorder();
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
   const { user } = useAuth();
-  const { getChatById, chats, subscribeToChannel, unsubscribeFromChannel, isChannelSubscribed } = useChats();
+  const { getChatById, chats, updateChat, subscribeToChannel, unsubscribeFromChannel, isChannelSubscribed } = useChats();
   const { contacts } = useContacts();
   const { startOutgoingCall } = useCall();
   const { getMessages, setMessagesForChat, addMessageToChat, sendTextMessage, sendVoiceMessage, sendVideoNoteMessage, sendMediaMessage, sendDocumentMessage, editMessageContent, deleteMessageFromServer, deleteForEveryone, updateMessageReaction, loadMoreMessages, hasMoreOlder, loadMessagesForChat } = useMessages();
@@ -134,6 +134,7 @@ const ChatPage = () => {
   const [forwardMessage, setForwardMessage] = useState<Message | null>(null);
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
   const viewedPostIdsRef = useRef<Set<string>>(new Set());
+  const readEmittedIdsRef = useRef<Set<string>>(new Set());
 
   // Redirect if chat was deleted
   useEffect(() => {
@@ -144,6 +145,31 @@ const ChatPage = () => {
   useEffect(() => {
     if (chatId) loadMessagesForChat(chatId);
   }, [chatId, loadMessagesForChat]);
+
+  // Reset read-emitted set when switching chats
+  useEffect(() => {
+    if (chatId) readEmittedIdsRef.current = new Set();
+  }, [chatId]);
+
+  // Mark incoming messages as read when viewing chat and update unread count
+  useEffect(() => {
+    if (!chatId || !messages.length) return;
+    const unreadIncoming = messages.filter(
+      (m) => !m.isOutgoing && (m.status === 'sent' || m.status === 'delivered')
+    );
+    const emitted = readEmittedIdsRef.current;
+    let didEmit = false;
+    for (const m of unreadIncoming) {
+      if (!emitted.has(m.id)) {
+        emitted.add(m.id);
+        ws.emitMessageRead(m.id);
+        didEmit = true;
+      }
+    }
+    if (didEmit || unreadIncoming.length > 0 || (chat?.unreadCount ?? 0) > 0) {
+      updateChat(chatId, { unreadCount: 0 });
+    }
+  }, [chatId, messages, chat?.unreadCount, ws, updateChat]);
 
   // Start video note recording when UI is shown (so video ref is mounted)
   useEffect(() => {
