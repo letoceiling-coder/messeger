@@ -18,7 +18,8 @@ export function getSocket(token: string | null): Socket | null {
   const url = getWsUrl();
   socket = io(url, {
     auth: { token },
-    transports: ['websocket', 'polling'],
+    path: '/socket.io',
+    transports: ['polling', 'websocket'],
   });
 
   return socket;
