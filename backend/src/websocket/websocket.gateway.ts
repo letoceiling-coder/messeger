@@ -133,6 +133,9 @@ export class MessagerWebSocketGateway
       // Присоединение к комнатам чатов пользователя
       await this.joinUserChatRooms(client, payload.sub);
 
+      // Комната user:userId — для доставки message:delivery_status отправителю (работает при нескольких инстансах)
+      client.join(`user:${payload.sub}`);
+
       this.logger.log(`User connected: ${payload.sub} (socket: ${client.id})`);
 
       // Уведомление участников чатов о подключении
@@ -331,22 +334,18 @@ export class MessagerWebSocketGateway
       });
 
       if (delivery.count > 0) {
-        // Получение информации о сообщении для отправки отправителю
         const message = await this.prisma.message.findUnique({
           where: { id: dto.messageId },
-          select: { userId: true },
+          select: { userId: true, chatId: true },
         });
 
         if (message && message.userId !== client.userId) {
-          // Отправка статуса доставки отправителю
-          const senderSocketId = this.connectedUsers.get(message.userId);
-          if (senderSocketId) {
-            this.server.to(senderSocketId).emit('message:delivery_status', {
-              messageId: dto.messageId,
-              userId: client.userId,
-              status: 'delivered',
-            });
-          }
+          this.server.to(`user:${message.userId}`).emit('message:delivery_status', {
+            messageId: dto.messageId,
+            chatId: message.chatId,
+            userId: client.userId,
+            status: 'delivered',
+          });
         }
       }
     } catch (error) {
@@ -389,18 +388,16 @@ export class MessagerWebSocketGateway
       if (delivery.count > 0) {
         const message = await this.prisma.message.findUnique({
           where: { id: dto.messageId },
-          select: { userId: true },
+          select: { userId: true, chatId: true },
         });
 
         if (message && message.userId !== client.userId) {
-          const senderSocketId = this.connectedUsers.get(message.userId);
-          if (senderSocketId) {
-            this.server.to(senderSocketId).emit('message:delivery_status', {
-              messageId: dto.messageId,
-              userId: client.userId,
-              status: 'read',
-            });
-          }
+          this.server.to(`user:${message.userId}`).emit('message:delivery_status', {
+            messageId: dto.messageId,
+            chatId: message.chatId,
+            userId: client.userId,
+            status: 'read',
+          });
         }
       }
     } catch (error) {
