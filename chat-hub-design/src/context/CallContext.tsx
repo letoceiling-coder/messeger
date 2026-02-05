@@ -195,6 +195,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         cleanupCall();
         setActiveCall(null);
       });
+      webrtc.onConnectionStateChange((conn, ice) => {
+        const poor = ice === 'disconnected' || conn === 'failed';
+        setActiveCall((prev) => prev ? { ...prev, networkState: poor ? 'reconnecting' : 'good' } : null);
+      });
 
       webrtc.initiateCall(chatId, { video: type === 'video' })
         .then((stream) => {
@@ -277,14 +281,18 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           setActiveCall(null);
           clearTimer();
         });
-        webrtc.onConnectionFailed(() => {
-          toast.error('Не удалось установить соединение');
-          cleanupCall();
-          setActiveCall(null);
-        });
+      webrtc.onConnectionFailed(() => {
+        toast.error('Не удалось установить соединение');
+        cleanupCall();
+        setActiveCall(null);
+      });
+      webrtc.onConnectionStateChange((conn, ice) => {
+        const poor = ice === 'disconnected' || conn === 'failed';
+        setActiveCall((prev) => prev ? { ...prev, networkState: poor ? 'reconnecting' : 'good' } : null);
+      });
 
-        try {
-          const stream = await webrtc.handleOffer(pending.chatId, pending.offer, { video: pending.videoMode });
+      try {
+        const stream = await webrtc.handleOffer(pending.chatId, pending.offer, { video: pending.videoMode });
           setLocalStream(stream);
           setActiveCall((prev) => prev ? { ...prev, state: 'connected', startTime: Date.now() } : null);
         } catch (err) {

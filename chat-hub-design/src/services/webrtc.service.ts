@@ -35,6 +35,7 @@ export class WebRTCService {
   private onRemoteStreamCallback?: (stream: MediaStream) => void;
   private onCallEndCallback?: () => void;
   private onConnectionFailedCallback?: () => void;
+  private onConnectionStateChangeCallback?: (conn: string, ice: string) => void;
   private onNoAnswerCallback?: () => void;
   private onCallBusyCallback?: (data: { message?: string }) => void;
   private onCallErrorCallback?: (message: string) => void;
@@ -150,20 +151,29 @@ export class WebRTCService {
     };
 
     this.peerConnection.onconnectionstatechange = () => {
-      if (this.peerConnection?.connectionState === 'failed') this.onConnectionFailedCallback?.();
+      const s = this.peerConnection?.connectionState;
+      const i = this.peerConnection?.iceConnectionState;
+      webrtcLogService.add('connectionState: ' + s + ' ice: ' + i);
+      if (s === 'failed') this.onConnectionFailedCallback?.();
+      this.onConnectionStateChangeCallback?.(s ?? '', i ?? '');
     };
 
     this.peerConnection.oniceconnectionstatechange = () => {
-      if (this.peerConnection?.iceConnectionState === 'failed') this.onConnectionFailedCallback?.();
+      const i = this.peerConnection?.iceConnectionState;
+      webrtcLogService.add('iceConnectionState: ' + i);
+      if (i === 'failed') this.onConnectionFailedCallback?.();
+      this.onConnectionStateChangeCallback?.(this.peerConnection?.connectionState ?? '', i ?? '');
     };
 
     this.peerConnection.ontrack = (e) => {
+      webrtcLogService.add('ontrack (caller): ' + (e.track?.kind ?? ''));
       const stream = e.streams?.[0] || (e.track ? new MediaStream([e.track]) : null);
       if (!stream) return;
       if (!this.remoteStream) this.remoteStream = new MediaStream(stream.getTracks());
       else stream.getTracks().forEach((t) => {
         if (!this.remoteStream!.getTracks().some((r) => r.id === t.id)) this.remoteStream!.addTrack(t);
       });
+      webrtcLogService.add('remoteStream tracks: ' + this.remoteStream.getTracks().map((t) => t.kind).join(','));
       this.onRemoteStreamCallback?.(new MediaStream(this.remoteStream.getTracks()));
     };
 
@@ -200,12 +210,14 @@ export class WebRTCService {
     this.peerConnection = new RTCPeerConnection({ iceServers: getIceServers(), iceCandidatePoolSize: 10 });
 
     this.peerConnection.ontrack = (e) => {
+      webrtcLogService.add('ontrack (answerer): ' + (e.track?.kind ?? ''));
       const stream = e.streams?.[0] || (e.track ? new MediaStream([e.track]) : null);
       if (!stream) return;
       if (!this.remoteStream) this.remoteStream = new MediaStream(stream.getTracks());
       else stream.getTracks().forEach((t) => {
         if (!this.remoteStream!.getTracks().some((r) => r.id === t.id)) this.remoteStream!.addTrack(t);
       });
+      webrtcLogService.add('remoteStream tracks: ' + this.remoteStream.getTracks().map((t) => t.kind).join(','));
       this.onRemoteStreamCallback?.(new MediaStream(this.remoteStream.getTracks()));
     };
 
@@ -216,11 +228,18 @@ export class WebRTCService {
     };
 
     this.peerConnection.onconnectionstatechange = () => {
-      if (this.peerConnection?.connectionState === 'failed') this.onConnectionFailedCallback?.();
+      const s = this.peerConnection?.connectionState;
+      const i = this.peerConnection?.iceConnectionState;
+      webrtcLogService.add('connectionState (answerer): ' + s + ' ice: ' + i);
+      if (s === 'failed') this.onConnectionFailedCallback?.();
+      this.onConnectionStateChangeCallback?.(s ?? '', i ?? '');
     };
 
     this.peerConnection.oniceconnectionstatechange = () => {
-      if (this.peerConnection?.iceConnectionState === 'failed') this.onConnectionFailedCallback?.();
+      const i = this.peerConnection?.iceConnectionState;
+      webrtcLogService.add('iceConnectionState (answerer): ' + i);
+      if (i === 'failed') this.onConnectionFailedCallback?.();
+      this.onConnectionStateChangeCallback?.(this.peerConnection?.connectionState ?? '', i ?? '');
     };
 
     await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
@@ -231,19 +250,21 @@ export class WebRTCService {
     const videoTrack = this.localStream.getVideoTracks()[0];
     for (const tr of transceivers) {
       if (!tr.sender || tr.sender.track != null) continue;
-      const kind = (tr.receiver?.track?.kind ?? '').toLowerCase();
+      const kind = ((tr as { kind?: string }).kind ?? tr.receiver?.track?.kind ?? '').toLowerCase();
       const localTrack = kind === 'video' ? videoTrack : audioTrack;
       if (localTrack) {
         try {
           await tr.sender.replaceTrack(localTrack);
-          tr.direction = 'sendrecv';
+          (tr as { direction?: string }).direction = 'sendrecv';
+          webrtcLogService.add('replaceTrack ok: ' + kind);
         } catch (e) {
-          webrtcLogService.warn('replaceTrack failed', String(e));
+          webrtcLogService.warn('replaceTrack failed ' + kind, String(e));
         }
       }
     }
     if (!transceivers.some((tr) => tr.sender?.track != null)) {
       this.localStream.getTracks().forEach((t) => this.peerConnection!.addTrack(t, this.localStream!));
+      webrtcLogService.add('addTrack fallback: ' + this.localStream.getTracks().map((t) => t.kind).join(','));
     }
 
     const answer = await this.peerConnection.createAnswer();
@@ -302,6 +323,10 @@ export class WebRTCService {
 
   onConnectionFailed(cb: () => void) {
     this.onConnectionFailedCallback = cb;
+  }
+
+  onConnectionStateChange(cb: (conn: string, ice: string) => void) {
+    this.onConnectionStateChangeCallback = cb;
   }
 
   onNoAnswer(cb: () => void) {

@@ -34,8 +34,11 @@ export default function ActiveCallScreen({
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
-    if (audioRef.current && remoteStream) {
-      audioRef.current.srcObject = remoteStream;
+    const el = audioRef.current;
+    if (el && remoteStream) {
+      el.srcObject = remoteStream;
+      el.muted = false;
+      el.play().catch(() => {});
     }
   }, [remoteStream]);
 
@@ -46,7 +49,7 @@ export default function ActiveCallScreen({
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-[200] flex flex-col bg-background"
     >
-      {remoteStream && <audio ref={audioRef} autoPlay playsInline />}
+      {remoteStream && <audio ref={audioRef} autoPlay playsInline muted={false} />}
       <div className="flex-1 flex flex-col items-center justify-center px-6 pt-safe">
         <UserAvatar
           name={call.contact.name}

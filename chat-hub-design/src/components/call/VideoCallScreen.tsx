@@ -44,14 +44,20 @@ export default function VideoCallScreen({
   const localVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
+    const el = remoteVideoRef.current;
+    if (el && remoteStream) {
+      el.srcObject = remoteStream;
+      el.muted = false;
+      el.play().catch(() => {});
     }
   }, [remoteStream]);
 
   useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
+    const el = localVideoRef.current;
+    if (el && localStream) {
+      el.srcObject = localStream;
+      el.muted = true;
+      el.play().catch(() => {});
     }
   }, [localStream]);
 
