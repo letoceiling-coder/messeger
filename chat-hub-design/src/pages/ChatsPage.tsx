@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MessageCircle, Archive } from 'lucide-react';
 import ChatListHeader from '@/components/chats/ChatListHeader';
+import SideMenu from '@/components/layout/SideMenu';
 import ChatListItem from '@/components/chats/ChatListItem';
 import EmptyState from '@/components/common/EmptyState';
 import { PullToRefresh } from '@/components/common/PullToRefresh';
