@@ -58,7 +58,8 @@ echo "Sait: https://neekloai.ru"
 '@
 
 $tempScript = [System.IO.Path]::GetTempFileName() + ".sh"
-$deployScript | Out-File -FilePath $tempScript -Encoding UTF8 -NoNewline
+$content = $deployScript -replace "`r`n", "`n"
+[System.IO.File]::WriteAllText($tempScript, $content, [System.Text.UTF8Encoding]::new($false))
 
 try {
     scp $tempScript root@89.169.39.244:/tmp/deploy-chat-hub.sh
