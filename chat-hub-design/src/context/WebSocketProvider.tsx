@@ -1,5 +1,7 @@
 import React, { useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { useChats } from '@/context/ChatsContext';
 import { useMessages } from '@/context/MessagesContext';
 import { getSocket, disconnectSocket, type MessageReceivedPayload } from '@/services/websocket';
 import { WebSocketContext } from './websocket-context';
@@ -31,7 +33,10 @@ function payloadToMessage(p: MessageReceivedPayload, currentUserId: string): Mes
 }
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  const currentChatId = /^\/chat\/([^/]+)/.exec(location.pathname)?.[1] ?? null;
   const { user } = useAuth();
+  const { onNewMessage } = useChats();
   const { addMessageToChat, setMessagesForChat, setMessageStatus } = useMessages();
   const currentUserId = user?.id ?? '';
 
@@ -68,6 +73,8 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     const onMessage = (p: MessageReceivedPayload) => {
       const msg = payloadToMessage(p, currentUserId);
       addMessageToChat(p.chatId, msg);
+      const isViewingThisChat = currentChatId === p.chatId;
+      onNewMessage(p.chatId, msg, msg.isOutgoing, !isViewingThisChat);
       if (!msg.isOutgoing) {
         emitMessageDelivered(p.id);
       }
@@ -109,7 +116,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       s.off('message:edited');
       s.off('message:delivery_status', onDeliveryStatus);
     };
-  }, [currentUserId, addMessageToChat, setMessagesForChat, setMessageStatus, emitMessageDelivered]);
+  }, [currentUserId, currentChatId, addMessageToChat, setMessagesForChat, setMessageStatus, emitMessageDelivered, onNewMessage]);
 
   useEffect(() => {
     return () => disconnectSocket();

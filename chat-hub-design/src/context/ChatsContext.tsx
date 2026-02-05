@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
-import { Chat } from '@/types/messenger';
+import { Chat, Message } from '@/types/messenger';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/services/api';
 import { mapApiChatToChat, type ApiChat } from '@/services/chatMapper';
 
-type ChatUpdate = Partial<Pick<Chat, 'isPinned' | 'isMuted' | 'isArchived' | 'unreadCount' | 'isTyping'>>;
+type ChatUpdate = Partial<Pick<Chat, 'isPinned' | 'isMuted' | 'isArchived' | 'unreadCount' | 'isTyping' | 'lastMessage'>>;
 
 interface ChatsContextValue {
   chats: Chat[];
@@ -15,6 +15,8 @@ interface ChatsContextValue {
   /** Создать групповой чат */
   createGroupChat: (name: string, memberIds: string[], description?: string) => Promise<Chat | null>;
   updateChat: (chatId: string, update: ChatUpdate) => void;
+  /** Обновить список чатов при новом сообщении (в реальном времени). incrementUnread=false если пользователь просматривает этот чат */
+  onNewMessage: (chatId: string, message: Message, isOutgoing: boolean, incrementUnread?: boolean) => void;
   deleteChat: (chatId: string) => void;
   addChat: (chat: Chat) => void;
   getChatById: (chatId: string) => Chat | undefined;
@@ -112,6 +114,24 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
+  const onNewMessage = useCallback((chatId: string, message: Message, isOutgoing: boolean, incrementUnread = true) => {
+    setChats((prev) => {
+      const updated = prev.map((c) => {
+        if (c.id !== chatId) return c;
+        const addUnread = !isOutgoing && incrementUnread;
+        return {
+          ...c,
+          lastMessage: message,
+          unreadCount: isOutgoing ? (c.unreadCount ?? 0) : (addUnread ? (c.unreadCount ?? 0) + 1 : (c.unreadCount ?? 0)),
+        };
+      });
+      const idx = updated.findIndex((c) => c.id === chatId);
+      if (idx <= 0) return updated;
+      const [chat] = updated.splice(idx, 1);
+      return [chat, ...updated];
+    });
+  }, []);
+
   const deleteChat = useCallback((chatId: string) => {
     setChats((prev) => prev.filter((c) => c.id !== chatId));
   }, []);
@@ -160,6 +180,7 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
       createGroupChat,
       addChat,
       updateChat,
+      onNewMessage,
       deleteChat,
       getChatById,
       pinChat,
@@ -179,6 +200,7 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
       createGroupChat,
       addChat,
       updateChat,
+      onNewMessage,
       deleteChat,
       getChatById,
       pinChat,

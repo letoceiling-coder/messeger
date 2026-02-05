@@ -60,6 +60,7 @@ function LoginRoute() {
 }
 
 const App = () => (
+  <BrowserRouter>
   <QueryClientProvider client={queryClient}>
     <AppStateProvider>
       <AuthProvider>
@@ -71,7 +72,6 @@ const App = () => (
                 <FeedProvider>
                 <ThemeProvider attribute="class" defaultTheme="system" storageKey="messenger-theme" enableSystem>
                 <TooltipProvider>
-                  <BrowserRouter>
                     <CallOverlay />
                     <Routes>
                       <Route path="/login" element={<LoginRoute />} />
@@ -99,8 +99,7 @@ const App = () => (
                         <Route path="*" element={<NotFound />} />
                       </Route>
                     </Routes>
-                  </BrowserRouter>
-                </TooltipProvider>
+                    </TooltipProvider>
                 </ThemeProvider>
                 </FeedProvider>
                 </WebSocketProvider>
@@ -111,6 +110,7 @@ const App = () => (
       </AuthProvider>
     </AppStateProvider>
   </QueryClientProvider>
+  </BrowserRouter>
 );
 
 export default App;
