@@ -132,14 +132,18 @@ export class WebRTCService {
       throw new Error('Микрофон доступен только по HTTPS или localhost');
     }
 
-    this.localStream = await navigator.mediaDevices.getUserMedia({
+    const { stream } = await getMediaStreamWithFallback({
       audio: true,
       video: useVideo ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } : false,
     });
+    if (!stream) throw new Error('Не удалось получить доступ к микрофону');
+    this.localStream = stream;
+    webrtcLogService.add('initiateCall tracks: ' + stream.getTracks().map((t) => t.kind).join(','));
 
     this.peerConnection = new RTCPeerConnection({
       iceServers: getIceServers(),
       iceCandidatePoolSize: 10,
+      bundlePolicy: 'max-bundle',
     });
 
     this.localStream.getTracks().forEach((t) => this.peerConnection!.addTrack(t, this.localStream!));
@@ -148,6 +152,10 @@ export class WebRTCService {
       if (e.candidate && this.chatId) {
         this.socket.emit('call:ice-candidate', { chatId: this.chatId, candidate: e.candidate.toJSON() });
       }
+    };
+
+    this.peerConnection.onicegatheringstatechange = () => {
+      webrtcLogService.add('ICE gathering: ' + (this.peerConnection?.iceGatheringState ?? ''));
     };
 
     this.peerConnection.onconnectionstatechange = () => {
@@ -207,7 +215,11 @@ export class WebRTCService {
       this.localStream = stream;
     }
 
-    this.peerConnection = new RTCPeerConnection({ iceServers: getIceServers(), iceCandidatePoolSize: 10 });
+    this.peerConnection = new RTCPeerConnection({
+      iceServers: getIceServers(),
+      iceCandidatePoolSize: 10,
+      bundlePolicy: 'max-bundle',
+    });
 
     this.peerConnection.ontrack = (e) => {
       webrtcLogService.add('ontrack (answerer): ' + (e.track?.kind ?? ''));
@@ -248,7 +260,13 @@ export class WebRTCService {
     const transceivers = this.peerConnection.getTransceivers?.() ?? [];
     const audioTrack = this.localStream.getAudioTracks()[0];
     const videoTrack = this.localStream.getVideoTracks()[0];
-    for (const tr of transceivers) {
+    const hasVideoTransceiver = transceivers.some((tr) => ((tr as { kind?: string }).kind ?? '').toLowerCase() === 'video');
+    if (useVideo && videoTrack && !hasVideoTransceiver) {
+      this.peerConnection.addTransceiver('video', { direction: 'sendrecv' });
+      webrtcLogService.add('addTransceiver video (offer had audio only)');
+    }
+    const transceiversAfter = this.peerConnection.getTransceivers?.() ?? [];
+    for (const tr of transceiversAfter) {
       if (!tr.sender || tr.sender.track != null) continue;
       const kind = ((tr as { kind?: string }).kind ?? tr.receiver?.track?.kind ?? '').toLowerCase();
       const localTrack = kind === 'video' ? videoTrack : audioTrack;
@@ -262,7 +280,7 @@ export class WebRTCService {
         }
       }
     }
-    if (!transceivers.some((tr) => tr.sender?.track != null)) {
+    if (!transceiversAfter.some((tr) => tr.sender?.track != null)) {
       this.localStream.getTracks().forEach((t) => this.peerConnection!.addTrack(t, this.localStream!));
       webrtcLogService.add('addTrack fallback: ' + this.localStream.getTracks().map((t) => t.kind).join(','));
     }
